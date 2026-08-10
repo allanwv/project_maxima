@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Project xmlns="http://schemas.microsoft.com/project">
+    <Name>Proyecto de Prueba XML</Name>
+    <Title>Proyecto de Prueba XML</Title>
+    <Tasks>
+        <Task>
+            <UID>0</UID>
+            <ID>0</ID>
+            <Name>Proyecto de Prueba XML</Name>
+            <OutlineLevel>0</OutlineLevel>
+            <Start>2026-08-10T08:00:00</Start>
+            <Finish>2026-08-15T17:00:00</Finish>
+        </Task>
+        <Task>
+            <UID>1</UID>
+            <ID>1</ID>
+            <Name>Fase 1: Resumen</Name>
+            <OutlineLevel>1</OutlineLevel>
+            <Start>2026-08-10T08:00:00</Start>
+            <Finish>2026-08-12T17:00:00</Finish>
+            <Duration>PT24H0M0S</Duration>
+            <PercentComplete>50</PercentComplete>
+            <Milestone>0</Milestone>
+            <Summary>1</Summary>
+        </Task>
+        <Task>
+            <UID>2</UID>
+            <ID>2</ID>
+            <Name>Tarea 1.1</Name>
+            <OutlineLevel>2</OutlineLevel>
+            <Start>2026-08-10T08:00:00</Start>
+            <Finish>2026-08-11T17:00:00</Finish>
+            <Duration>PT16H0M0S</Duration>
+            <PercentComplete>100</PercentComplete>
+            <Milestone>0</Milestone>
+        </Task>
+        <Task>
+            <UID>3</UID>
+            <ID>3</ID>
+            <Name>Subtarea anidada 1.1.1</Name>
+            <OutlineLevel>3</OutlineLevel>
+            <Start>2026-08-10T08:00:00</Start>
+            <Finish>2026-08-10T17:00:00</Finish>
+            <Duration>PT8H0M0S</Duration>
+            <PercentComplete>0</PercentComplete>
+        </Task>
+        <Task>
+            <UID>4</UID>
+            <ID>4</ID>
+            <Name>Tarea 1.2</Name>
+            <OutlineLevel>2</OutlineLevel>
+            <Start>2026-08-12T08:00:00</Start>
+            <Finish>2026-08-12T17:00:00</Finish>
+            <Duration>PT8H0M0S</Duration>
+            <PercentComplete>0</PercentComplete>
+            <Milestone>0</Milestone>
+            <PredecessorLink>
+                <PredecessorUID>2</PredecessorUID>
+                <Type>1</Type>
+                <LinkLag>0</LinkLag>
+            </PredecessorLink>
+        </Task>
+        <Task>
+            <UID>5</UID>
+            <ID>5</ID>
+            <Name>Hito de fin</Name>
+            <OutlineLevel>1</OutlineLevel>
+            <Start>2026-08-13T08:00:00</Start>
+            <Finish>2026-08-13T08:00:00</Finish>
+            <Duration>PT0H0M0S</Duration>
+            <PercentComplete>0</PercentComplete>
+            <Milestone>1</Milestone>
+        </Task>
+    </Tasks>
+    <Resources>
+        <Resource>
+            <UID>101</UID>
+            <Name>Desarrollador Senior</Name>
+        </Resource>
+    </Resources>
+    <Assignments>
+        <Assignment>
+            <UID>201</UID>
+            <TaskUID>2</TaskUID>
+            <ResourceUID>101</ResourceUID>
+        </Assignment>
+    </Assignments>
+</Project>
