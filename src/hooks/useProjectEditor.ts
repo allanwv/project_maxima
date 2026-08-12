@@ -1,5 +1,15 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { GanttProject, GanttTask } from '../domain/models';
+import {
+  createNewTask,
+  getDescendantIds,
+  cleanOrphanedDependencies,
+  insertTaskAtPosition,
+  moveTaskBranch,
+  indentTask as utilsIndentTask,
+  outdentTask as utilsOutdentTask,
+  canIndentTask as utilsCanIndentTask
+} from '../domain/taskUtils';
 
 const MAX_HISTORY = 50;
 
@@ -7,7 +17,15 @@ export function useProjectEditor(initialProject: GanttProject) {
   const [project, setProjectState] = useState<GanttProject>(initialProject);
   const [history, setHistory] = useState<GanttProject[]>([]);
   const [future, setFuture] = useState<GanttProject[]>([]);
-  const [isDirty, setIsDirty] = useState(false);
+  const [lastSavedProject, setLastSavedProject] = useState<GanttProject>(initialProject);
+
+  const isDirty = project !== lastSavedProject;
+
+  const setIsDirty = useCallback((dirty: boolean) => {
+    if (!dirty) {
+      setLastSavedProject(project);
+    }
+  }, [project]);
 
   // Autosave to localStorage on project change
   useEffect(() => {
@@ -25,7 +43,7 @@ export function useProjectEditor(initialProject: GanttProject) {
     setProjectState(newProject);
     setHistory([]);
     setFuture([]);
-    setIsDirty(false);
+    setLastSavedProject(newProject);
   }, []);
 
   const pushState = useCallback((newProject: GanttProject) => {
@@ -36,7 +54,6 @@ export function useProjectEditor(initialProject: GanttProject) {
     });
     setFuture([]);
     setProjectState(newProject);
-    setIsDirty(true);
   }, [project]);
 
   const undo = useCallback(() => {
@@ -45,7 +62,6 @@ export function useProjectEditor(initialProject: GanttProject) {
     setFuture(f => [project, ...f]);
     setHistory(h => h.slice(0, h.length - 1));
     setProjectState(prev);
-    setIsDirty(true);
   }, [history, project]);
 
   const redo = useCallback(() => {
@@ -54,7 +70,6 @@ export function useProjectEditor(initialProject: GanttProject) {
     setHistory(h => [...h, project]);
     setFuture(f => f.slice(1));
     setProjectState(next);
-    setIsDirty(true);
   }, [future, project]);
 
   // Hook up keyboard shortcuts
@@ -118,6 +133,81 @@ export function useProjectEditor(initialProject: GanttProject) {
     pushState({ ...project, tasks: newTasks });
   }, [project, pushState]);
 
+  const updateTasks = useCallback((newTasks: GanttTask[]) => {
+    pushState({ ...project, tasks: newTasks });
+  }, [project, pushState]);
+
+  /**
+   * Rename the project. Atomic Undo/Redo.
+   */
+  const renameProject = useCallback((newName: string) => {
+    if (!newName || !newName.trim()) return;
+    pushState({ ...project, name: newName.trim() });
+  }, [project, pushState]);
+
+  /**
+   * Add a new root task at the end of the project.
+   * Returns the UID of the created task so the UI can set it into edit mode.
+   */
+  const addTask = useCallback((): string => {
+    const newTask = createNewTask(project.tasks);
+    const newTasks = insertTaskAtPosition(project.tasks, newTask);
+    pushState({ ...project, tasks: newTasks });
+    return newTask.id;
+  }, [project, pushState]);
+
+  /**
+   * Add a subtask to a given parent.
+   * Returns the UID of the created subtask.
+   */
+  const addSubtask = useCallback((parentId: string): string => {
+    const newTask = createNewTask(project.tasks, parentId);
+    const newTasks = insertTaskAtPosition(project.tasks, newTask);
+    pushState({ ...project, tasks: newTasks });
+    return newTask.id;
+  }, [project, pushState]);
+
+  /**
+   * Delete a task (and all its descendants). Cleans orphaned dependencies.
+   * Slack-friendly: does NOT move any surviving task's dates.
+   * Returns true if deletion occurred.
+   */
+  const deleteTask = useCallback((taskId: string): boolean => {
+    const task = project.tasks.find(t => t.id === taskId);
+    if (!task) return false;
+
+    const descendantIds = getDescendantIds(project.tasks, taskId);
+    const deletedIds = new Set([taskId, ...descendantIds]);
+
+    // Remove the tasks
+    let newTasks = project.tasks.filter(t => !deletedIds.has(t.id));
+
+    // Clean orphaned dependency references
+    newTasks = cleanOrphanedDependencies(newTasks, deletedIds);
+
+    pushState({ ...project, tasks: newTasks });
+    return true;
+  }, [project, pushState]);
+
+  const moveTask = useCallback((sourceId: string, targetId: string, position: 'before' | 'after') => {
+    const newTasks = moveTaskBranch(project.tasks, sourceId, targetId, position);
+    pushState({ ...project, tasks: newTasks });
+  }, [project, pushState]);
+
+  const indentTask = useCallback((taskId: string) => {
+    const newTasks = utilsIndentTask(project.tasks, taskId);
+    pushState({ ...project, tasks: newTasks });
+  }, [project, pushState]);
+
+  const outdentTask = useCallback((taskId: string) => {
+    const newTasks = utilsOutdentTask(project.tasks, taskId);
+    pushState({ ...project, tasks: newTasks });
+  }, [project, pushState]);
+
+  const canIndentTask = useCallback((taskId: string) => {
+    return utilsCanIndentTask(project.tasks, taskId);
+  }, [project.tasks]);
+
   return {
     project,
     updateTask,
@@ -127,6 +217,16 @@ export function useProjectEditor(initialProject: GanttProject) {
     canRedo: future.length > 0,
     isDirty,
     setIsDirty,
-    loadProject
+    loadProject,
+    updateTasks,
+    renameProject,
+    addTask,
+    addSubtask,
+    deleteTask,
+    moveTask,
+    indentTask,
+    outdentTask,
+    canIndentTask
   };
 }
+

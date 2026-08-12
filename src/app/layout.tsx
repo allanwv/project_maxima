@@ -5,7 +5,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Maxima - Gantt Moderno",
+  title: "Editor Gantt Moderno",
   description: "Visualizador y editor de planificaciones Gantt moderno y simple.",
 };
 

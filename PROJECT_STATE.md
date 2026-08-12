@@ -74,8 +74,37 @@ Modelos definidos en `src/domain/models.ts`:
   - Diferenciación visual de tareas *Summary* (padres). Ahora muestran un fondo gris/slate suave para evitar parecer "completadas al 0%" a diferencia de las tareas hoja celestes.
   - Implementación de controles funcionales de Zoom: Presets de `Día | Semana | Mes` junto a controles incrementales de `+` y `-` con persistencia del nivel de zoom en `localStorage`.
   - Mejorada la representación de las fechas en la tabla para usar el formato `dd-MM-yyyy` optimizando el truncado.
-  
+- **2026-08-10 (Iteración 4 - Dependencias (Fase 1))**:
+  - Preparación de la arquitectura base para soporte robusto de predecesoras, manejando correctamente los conceptos de `UID` (identidad permanente) vs `displayId` (posición mostrada).
+  - Integración de dos nuevas columnas: **ID** (visual) y **PREDECESORAS**.
+  - Mapeo dinámico de relaciones del tipo FS/SS/FF/SF + Lag, leyendo la etiqueta nativa `<LinkLag>` (decodificando minutos a días) y `<Type>` del XML.
+  - Comprobado que la línea SVG de dependencias existente dependa de `UID` (identificador estable).
+  - **Edición Inline de Predecesoras**:
+    - Permite escribir dependencias de forma humana (`4FS+2d, 5`).
+    - Resolución `DisplayId -> UID` al guardar.
+    - Validaciones estrictas: Prevención de ciclos, auto-dependencias, id inexistentes y dependencias duplicadas.
+    - Integración automática con Undo/Redo y persistencia a archivo `.json` de Maxima.
+    - Líneas SVG actualizadas en tiempo real, aún sin recalcular cronograma en cascada.
+  - **Dependency Scheduling Engine (Capa de lógica pura)**:
+    - Función central `scheduleProjectAfterTaskChange` que recalcula fechas al vuelo.
+    - Soporte completo para relaciones FS, SS, FF y SF, incluyendo lags positivos y negativos (leads).
+    - Múltiples predecesoras por tarea (aplica la restricción más exigente matemáticamente).
+    - Propagación en cascada recorriendo el árbol de sucesoras (`BFS` graph traversal).
+    - Mantiene duraciones originales en días laborales. Ignora fines de semana para cálculo de fechas.
+    - Ajuste recíproco de start/end en Summary Tasks y propagación jerárquica.
+    - Estrategia pasiva/slack-friendly: solo desplaza barras hacia adelante si la dependencia lo fuerza. No destruye los adelantamientos manuales (holgura).
+  - **FASE 4A - CRUD Estructural**:
+    - Renombrar proyecto: Edición inline en el header (doble-click o icono lápiz, Enter/Escape/blur).
+    - Renombrar tarea: Columna `Nombre` editable inline con validación (no vacío).
+    - Crear tarea raíz: Botón `+ Tarea` al final de la tabla. Genera UID estable con prefijo `maxima_`.
+    - Crear subtarea: Menú contextual `···` en cada fila → "Agregar subtarea" con auto-expand del padre.
+    - Eliminar tarea: Menú contextual con confirmación cuando hay subtareas o dependientes. Limpieza automática de dependencias huérfanas (slack-friendly: no mueve fechas).
+    - UID estable: Generado via `generateTaskUid()` con formato `maxima_<uuid>`. Nunca basado en displayId ni posición.
+    - displayId: Recalculado dinámicamente por `buildTaskHierarchy()` según posición actual.
+    - Summary dinámico: Cualquier tarea con hijos se comporta como summary automáticamente.
+    - Undo/Redo atómico para todas las operaciones CRUD.
+    - Save/Load `.maxima.json` preserva UIDs, jerarquía y dependencias.
+
 ### Próximos Pasos (Futuro - Post MVP)
-- Algoritmo de cálculo de layout automático tras colisión de tareas en redimensionamientos abruptos.
-- Soporte para formatos nativos binarios como `.pod`.
-- Exportar XML reconciliable hacia ProjectLibre conservando UID / Resource IDs.
+- **FASE 4B**: Reorder + Indent/Outdent + Drag vertical.
+- **Integrar Scheduling Engine con UI**: Conectar la lógica pura a eventos de Drag & Drop, resize y edición de celdas fecha/duración.

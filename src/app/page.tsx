@@ -1,26 +1,43 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { mockProject } from '@/mock/project';
+import { FolderOpen } from 'lucide-react';
 import { GanttChart } from '@/components/gantt/GanttChart';
 import { Header } from '@/components/layout/Header';
 import { GanttProject } from '@/domain/models';
 import { importProjectXml } from '@/importers/xml/projectXmlImporter';
 import { useProjectEditor } from '@/hooks/useProjectEditor';
 import { useZoom } from '@/hooks/useZoom';
+import { useSaveFile } from '@/hooks/useSaveFile';
+
+const emptyProject: GanttProject = {
+  id: 'empty-project',
+  name: 'Proyecto sin título',
+  tasks: [],
+  resources: []
+};
 
 export default function Home() {
   const {
     project,
     updateTask,
+    updateTasks,
     undo,
     redo,
     canUndo,
     canRedo,
     isDirty,
     setIsDirty,
-    loadProject
-  } = useProjectEditor(mockProject);
+    loadProject,
+    renameProject,
+    addTask,
+    addSubtask,
+    deleteTask,
+    moveTask,
+    indentTask,
+    outdentTask,
+    canIndentTask
+  } = useProjectEditor(emptyProject);
 
   const {
     zoomLevel,
@@ -33,6 +50,17 @@ export default function Home() {
 
   const [importState, setImportState] = useState<'idle' | 'importing' | 'error' | 'success'>('idle');
   const [errorDetails, setErrorDetails] = useState<string>('');
+
+  const {
+    currentFile,
+    setCurrentFile,
+    saveStatus,
+    handleSaveOverwrite,
+    handleSaveCopy,
+    handleExportHtml,
+    handleImportMaxima,
+    handleOpenMaximaClick
+  } = useSaveFile({ project, setIsDirty, loadProject });
 
   // Attempt to load autosave on mount
   useEffect(() => {
@@ -58,6 +86,10 @@ export default function Home() {
       try {
         const importedProject = importProjectXml(xmlString);
         loadProject(importedProject);
+        setCurrentFile({
+          name: 'Importado.xml',
+          type: 'xml-import'
+        });
         setImportState('success');
         
         // Reset success state after a few seconds
@@ -68,19 +100,6 @@ export default function Home() {
         setErrorDetails(errorMessage);
       }
     }, 50);
-  };
-
-  const handleImportMaxima = (jsonString: string) => {
-    try {
-      const parsed = JSON.parse(jsonString);
-      if (parsed.format === 'project-maxima' && parsed.project) {
-        loadProject(parsed.project);
-      } else {
-        throw new Error('Formato JSON inválido. Debe ser un export de Maxima.');
-      }
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Error al importar JSON');
-    }
   };
 
   return (
@@ -102,6 +121,13 @@ export default function Home() {
         onSetZoomPreset={setPreset}
         canZoomIn={canZoomIn}
         canZoomOut={canZoomOut}
+        onRenameProject={renameProject}
+        currentFile={currentFile}
+        onSaveOverwrite={handleSaveOverwrite}
+        onSaveCopy={handleSaveCopy}
+        onExportHtml={handleExportHtml}
+        onOpenMaximaClick={handleOpenMaximaClick}
+        saveStatus={saveStatus}
       />
       
       {importState === 'error' && (
@@ -119,12 +145,32 @@ export default function Home() {
           </div>
         )}
         {/* We key by project id to force remount and reset expand/collapse states on new project */}
-        <GanttChart 
-          key={project.id} 
-          project={project} 
-          updateTask={updateTask}
-          zoomLevel={zoomLevel}
-        />
+        {project.tasks.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center bg-white border border-gray-200 rounded-lg shadow-sm m-4">
+            <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+              <FolderOpen className="text-gray-300" size={32} strokeWidth={1.5} />
+            </div>
+            <h2 className="text-xl font-medium text-gray-700 tracking-tight mb-2">Sin información que mostrar</h2>
+            <p className="text-sm text-gray-400 text-center max-w-md">
+              Comienza importando un archivo XML desde ProjectLibre o carga un archivo `.json` previo usando los controles superiores.
+            </p>
+          </div>
+        ) : (
+          <GanttChart 
+            key={project.id} 
+            project={project} 
+            updateTask={updateTask}
+            updateTasks={updateTasks}
+            zoomLevel={zoomLevel}
+            onAddTask={addTask}
+            onAddSubtask={addSubtask}
+            onDeleteTask={deleteTask}
+            onMoveTask={moveTask}
+            onIndentTask={indentTask}
+            onOutdentTask={outdentTask}
+            canIndentTask={canIndentTask}
+          />
+        )}
       </main>
     </div>
   );

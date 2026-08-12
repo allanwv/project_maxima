@@ -31,15 +31,16 @@ El importador sigue un orden estricto de prioridad para no inventar información
 - Fechas reales como `ActualStart` y `ActualFinish` se preservan en el modelo opcionalmente, pero **no** se usan como fechas programadas visuales en la Gantt actual.
 
      - `Tasks`:
-       - `UID`
+       - `UID`: Extraído como `GanttTask.id` (identidad permanente).
+       - `ID`: Extraído como `GanttTask.sourceId` (número original del XML).
        - `Name`
-       - `Start`
-       - `Finish`
-       - `Duration` (Formato ISO 8601 tipo `PT24H0M0S`)
-       - `PercentComplete`
+       - `Start` / `EarlyStart`
+       - `Finish` / `EarlyFinish`
+       - `Duration` / `DurationFormat`
+       - `PercentComplete` / `PhysicalPercentComplete`
        - `Milestone`
-       - `OutlineLevel` (Utilizado para inferir jerarquía de padres/hijos)
-       - `PredecessorLink` (`PredecessorUID`, `Type`, `LinkLag`)
+       - `OutlineLevel`: (Utilizado para inferir jerarquía de padres/hijos `parentId`)
+       - `PredecessorLink`: Genera la colección `dependencies`. Se lee `PredecessorUID` (target UID), `Type` (FS, SS, FF, SF) y `LinkLag` (se convierte de décimas de minuto a días basados en `<MinutesPerDay>`).
 
 2. **POD (ProjectLibre Nativo)** - **(Futuro)**
    - Formato binario nativo de ProjectLibre.

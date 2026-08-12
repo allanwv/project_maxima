@@ -6,7 +6,8 @@ export interface GanttProject {
 }
 
 export interface GanttTask {
-  id: string;
+  id: string; // The internal stable UID
+  sourceId?: string; // The original <ID> from XML, if any
   parentId?: string;
   name: string;
   start: string; // ISO String for dates e.g., '2026-08-10T00:00:00.000Z'

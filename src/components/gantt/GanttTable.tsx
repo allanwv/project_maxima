@@ -1,9 +1,12 @@
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, Trash2, MoreHorizontal, GripVertical, Indent as IndentIcon, Outdent as OutdentIcon } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
 import { format, parseISO } from 'date-fns';
-import { RenderTask, calculateEditedEnd, calculateEditedDuration } from '../../utils/ganttUtils';
+import { RenderTask, calculateEditedEnd, calculateEditedDuration, getDisplayIdByTaskUid } from '../../utils/ganttUtils';
+import { parseDependencyExpression, formatDependencyTooltip } from '../../utils/dependencyUtils';
 import { ColumnWidths } from './GanttChart';
 import { EditableCell } from './EditableCell';
 import { GanttTask } from '../../domain/models';
+import { findDependentTasks, getDescendantIds } from '../../domain/taskUtils';
 
 interface GanttTableProps {
   tasks: RenderTask[];
@@ -12,8 +15,19 @@ interface GanttTableProps {
   columnWidths: ColumnWidths;
   onResizeColumn: (col: keyof ColumnWidths, delta: number, startWidth: number) => void;
   updateTask: (taskId: string, updates: Partial<GanttTask>) => void;
+  updateTasks?: (newTasks: GanttTask[]) => void;
   selectedTaskId: string | null;
   onSelectTask: (taskId: string) => void;
+  onAddTask?: () => void;
+  onAddSubtask?: (parentId: string) => void;
+  onDeleteTask?: (taskId: string) => void;
+  editingTaskId?: string | null;
+  onClearEditingTask?: () => void;
+  allTasks?: GanttTask[];
+  onMoveTask?: (sourceId: string, targetId: string, position: 'before' | 'after') => void;
+  onIndentTask?: (taskId: string) => void;
+  onOutdentTask?: (taskId: string) => void;
+  canIndentTask?: (taskId: string) => boolean;
 }
 
 interface ResizeHandleProps {
@@ -31,10 +45,147 @@ const ResizeHandle = ({ col, onPointerDown }: ResizeHandleProps) => (
   </div>
 );
 
-export function GanttTable({ tasks, onToggleExpand, expandedIds, columnWidths, onResizeColumn, updateTask, selectedTaskId, onSelectTask }: GanttTableProps) {
-  const visibleTasks = tasks.filter(t => t.isVisible);
+function TaskActionMenu({ 
+  task, 
+  onAddSubtask, 
+  onDeleteTask, 
+  allTasks,
+  onIndentTask,
+  onOutdentTask,
+  canIndentTask
+}: { 
+  task: RenderTask; 
+  onAddSubtask?: (id: string) => void; 
+  onDeleteTask?: (id: string) => void; 
+  allTasks?: GanttTask[]; 
+  onIndentTask?: (taskId: string) => void;
+  onOutdentTask?: (taskId: string) => void;
+  canIndentTask?: (taskId: string) => boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  const totalWidth = columnWidths.name + columnWidths.progress + columnWidths.duration + columnWidths.es + columnWidths.ef;
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setConfirmDelete(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const descendants = allTasks ? getDescendantIds(allTasks, task.id) : [];
+  const deletedIds = new Set([task.id, ...descendants]);
+  const dependentTasks = allTasks ? findDependentTasks(allTasks, deletedIds) : [];
+
+  const handleDeleteClick = () => {
+    if (descendants.length > 0 || dependentTasks.length > 0) {
+      setConfirmDelete(true);
+    } else {
+      onDeleteTask?.(task.id);
+      setOpen(false);
+    }
+  };
+
+  const handleConfirmDelete = () => {
+    onDeleteTask?.(task.id);
+    setOpen(false);
+    setConfirmDelete(false);
+  };
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(!open); setConfirmDelete(false); }}
+        className="p-0.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100"
+        title="Acciones"
+      >
+        <MoreHorizontal size={14} />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-50 py-1 text-sm" onClick={(e) => e.stopPropagation()}>
+          {!confirmDelete ? (
+            <>
+              <button
+                onClick={() => { onAddSubtask?.(task.id); setOpen(false); }}
+                className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+              >
+                <Plus size={14} className="text-blue-500" /> Agregar subtarea
+              </button>
+              <div className="border-t border-gray-100 my-1" />
+              <button
+                onClick={() => { onIndentTask?.(task.id); setOpen(false); }}
+                disabled={!canIndentTask?.(task.id)}
+                className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <IndentIcon size={14} className="text-gray-500" /> Indentar
+              </button>
+              <button
+                onClick={() => { onOutdentTask?.(task.id); setOpen(false); }}
+                disabled={!task.parentId}
+                className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <OutdentIcon size={14} className="text-gray-500" /> Desindentar
+              </button>
+              <div className="border-t border-gray-100 my-1" />
+              <button
+                onClick={handleDeleteClick}
+                className="w-full text-left px-3 py-1.5 hover:bg-red-50 flex items-center gap-2 text-red-600"
+              >
+                <Trash2 size={14} /> Eliminar
+              </button>
+            </>
+          ) : (
+            <div className="px-3 py-2">
+              <p className="text-xs text-gray-700 font-medium mb-1">¿Confirmar eliminación?</p>
+              {descendants.length > 0 && (
+                <p className="text-[11px] text-amber-600 mb-1">
+                  Contiene {descendants.length} subtarea{descendants.length > 1 ? 's' : ''} que también se eliminarán.
+                </p>
+              )}
+              {dependentTasks.length > 0 && (
+                <p className="text-[11px] text-amber-600 mb-1">
+                  {dependentTasks.length} tarea{dependentTasks.length > 1 ? 's' : ''} depende{dependentTasks.length === 1 ? '' : 'n'} de esta actividad.
+                </p>
+              )}
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={handleConfirmDelete}
+                  className="flex-1 px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors"
+                >
+                  Eliminar
+                </button>
+                <button
+                  onClick={() => { setConfirmDelete(false); setOpen(false); }}
+                  className="flex-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded hover:bg-gray-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function GanttTable({ 
+  tasks, onToggleExpand, expandedIds, columnWidths, onResizeColumn, 
+  updateTask, selectedTaskId, onSelectTask,
+  onAddTask, onAddSubtask, onDeleteTask,
+  editingTaskId, onClearEditingTask, allTasks,
+  onMoveTask, onIndentTask, onOutdentTask, canIndentTask
+}: GanttTableProps) {
+  const visibleTasks = tasks.filter(t => t.isVisible);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragTarget, setDragTarget] = useState<{ id: string, position: 'before' | 'after' } | null>(null);
+
+  const totalWidth = columnWidths.id + columnWidths.name + columnWidths.progress + columnWidths.duration + columnWidths.es + columnWidths.ef + columnWidths.predecessors;
 
   const handlePointerDown = (e: React.PointerEvent, col: keyof ColumnWidths) => {
     e.preventDefault();
@@ -63,6 +214,11 @@ export function GanttTable({ tasks, onToggleExpand, expandedIds, columnWidths, o
       {/* Header */}
       <div className="h-[var(--header-height)] border-b border-gray-200 flex items-end pb-2 bg-gray-50/80 backdrop-blur-sm sticky top-0 z-20">
         <div className="flex w-full text-xs font-semibold text-gray-500 tracking-wider">
+          {/* ID */}
+          <div className="relative group/header flex items-center justify-center px-2" style={{ width: columnWidths.id }}>
+            <span className="uppercase truncate" title="ID visual de la tarea">ID</span>
+            <ResizeHandle col="id" onPointerDown={handlePointerDown} />
+          </div>
           {/* Name */}
           <div className="relative group/header flex items-center px-4" style={{ width: columnWidths.name }}>
             <span className="uppercase truncate">Nombre de la Tarea</span>
@@ -88,6 +244,11 @@ export function GanttTable({ tasks, onToggleExpand, expandedIds, columnWidths, o
             <span className="uppercase truncate" title="Estimated Finish / Fin estimado">eF</span>
             <ResizeHandle col="ef" onPointerDown={handlePointerDown} />
           </div>
+          {/* Predecessors */}
+          <div className="relative group/header flex items-center px-2" style={{ width: columnWidths.predecessors }}>
+            <span className="uppercase truncate" title="Predecesoras">PREDEC.</span>
+            <ResizeHandle col="predecessors" onPointerDown={handlePointerDown} />
+          </div>
         </div>
       </div>
 
@@ -95,18 +256,74 @@ export function GanttTable({ tasks, onToggleExpand, expandedIds, columnWidths, o
       <div className="flex-1">
         {visibleTasks.map((task) => {
           const isSelected = selectedTaskId === task.id;
+          const isAutoEditing = editingTaskId === task.id;
+          const isDraggingThis = draggedId === task.id;
+          const isDropTarget = dragTarget?.id === task.id;
+
           return (
           <div
             key={task.id}
+            draggable
+            onDragStart={(e) => {
+              setDraggedId(task.id);
+              e.dataTransfer.effectAllowed = 'move';
+              // Optional: e.dataTransfer.setDragImage(...)
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              if (!draggedId || draggedId === task.id) return;
+              
+              // Only trigger autoscroll near edges if possible, standard HTML5 drag does some automatically
+              const rect = e.currentTarget.getBoundingClientRect();
+              const isTopHalf = e.clientY < rect.top + rect.height / 2;
+              setDragTarget({ id: task.id, position: isTopHalf ? 'before' : 'after' });
+            }}
+            onDragLeave={(e) => {
+              // We don't nullify dragTarget here immediately to avoid flicker, 
+              // but we can rely on dragOver on other elements or dragEnd
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (draggedId && dragTarget && draggedId !== dragTarget.id) {
+                onMoveTask?.(draggedId, dragTarget.id, dragTarget.position);
+              }
+              setDraggedId(null);
+              setDragTarget(null);
+            }}
+            onDragEnd={() => {
+              setDraggedId(null);
+              setDragTarget(null);
+            }}
             onClick={() => onSelectTask(task.id)}
-            className={`flex items-center h-[var(--row-height)] border-b border-gray-100 transition-colors group cursor-pointer
+            className={`flex items-center relative h-[var(--row-height)] border-b border-gray-100 transition-colors group cursor-pointer
               ${isSelected ? 'bg-blue-50/60 hover:bg-blue-50' : 'hover:bg-gray-50'}
+              ${isDraggingThis ? 'opacity-40' : ''}
             `}
           >
+            {isDropTarget && dragTarget?.position === 'before' && (
+              <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 z-30 pointer-events-none" />
+            )}
+            {isDropTarget && dragTarget?.position === 'after' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 z-30 pointer-events-none" />
+            )}
+
+            {/* ID */}
+            <div 
+              className="px-2 text-center text-xs text-gray-400 font-medium truncate flex-shrink-0 flex items-center justify-between"
+              style={{ width: columnWidths.id }}
+              title={task.sourceId ? `ID original: ${task.sourceId} | UID: ${task.id}` : `UID: ${task.id}`}
+            >
+              <div className="w-3 flex-shrink-0 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500">
+                <GripVertical size={12} />
+              </div>
+              <span className="flex-1">{task.displayId}</span>
+            </div>
+
             {/* Name */}
             <div 
               className="flex items-center overflow-hidden px-4"
-              style={{ width: columnWidths.name, paddingLeft: `calc(1rem + ${task.depth * 1.5}rem)` }}
+              style={{ width: columnWidths.name, paddingLeft: `calc(0.25rem + ${task.depth * 0.4}rem)` }}
             >
               {task.hasChildren ? (
                 <button
@@ -122,9 +339,32 @@ export function GanttTable({ tasks, onToggleExpand, expandedIds, columnWidths, o
               ) : (
                 <div className="w-5 mr-1.5 flex-shrink-0" />
               )}
-              <span className="truncate text-sm font-medium text-gray-800" title={task.name}>
-                {task.name}
-              </span>
+              <div className="flex-1 min-w-0 flex items-center gap-1">
+                <EditableCell
+                  value={task.name}
+                  onSave={(val) => {
+                    const trimmed = val.trim();
+                    if (!trimmed) return;
+                    updateTask(task.id, { name: trimmed });
+                    onClearEditingTask?.();
+                  }}
+                  onValidate={(val) => {
+                    if (!val.trim()) return 'El nombre no puede estar vacío';
+                    return null;
+                  }}
+                  className="text-sm font-medium text-gray-800"
+                  autoEdit={isAutoEditing}
+                />
+                <TaskActionMenu
+                  task={task}
+                  onAddSubtask={onAddSubtask}
+                  onDeleteTask={onDeleteTask}
+                  allTasks={allTasks}
+                  onIndentTask={onIndentTask}
+                  onOutdentTask={onOutdentTask}
+                  canIndentTask={canIndentTask}
+                />
+              </div>
             </div>
             
             {/* Progress */}
@@ -213,9 +453,50 @@ export function GanttTable({ tasks, onToggleExpand, expandedIds, columnWidths, o
                 }}
               />
             </div>
+
+            {/* Predecessors */}
+            <div 
+              className="px-2 text-xs text-gray-500 truncate font-mono" 
+              style={{ width: columnWidths.predecessors }}
+              title={task.dependencies?.map(d => formatDependencyTooltip(d, getDisplayIdByTaskUid(tasks, d.taskId) || '?')).join('\n')}
+            >
+              <EditableCell
+                value={task.dependencies?.map(dep => {
+                  const preId = getDisplayIdByTaskUid(tasks, dep.taskId) || '?';
+                  const lagStr = dep.lag && dep.lag !== 0 ? (dep.lag > 0 ? `+${dep.lag}d` : `${dep.lag}d`) : '';
+                  return `${preId}${dep.type}${lagStr}`;
+                }).join(', ') || ''}
+                onValidate={(val) => {
+                  const result = parseDependencyExpression(val, tasks, task.id);
+                  if (!Array.isArray(result)) {
+                    return result.message;
+                  }
+                  return null;
+                }}
+                onSave={(val) => {
+                  const result = parseDependencyExpression(val, tasks, task.id);
+                  if (Array.isArray(result)) {
+                    updateTask(task.id, { dependencies: result });
+                  }
+                }}
+              />
+            </div>
           </div>
           );
         })}
+
+        {/* Add Task Row */}
+        {onAddTask && (
+          <div className="flex items-center h-[var(--row-height)] border-b border-gray-100 hover:bg-gray-50 transition-colors">
+            <button
+              onClick={onAddTask}
+              className="flex items-center gap-1.5 px-4 py-1 text-xs text-gray-400 hover:text-blue-600 transition-colors ml-[55px]"
+            >
+              <Plus size={14} />
+              <span>Tarea</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

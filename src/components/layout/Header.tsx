@@ -1,5 +1,5 @@
-import { Upload, FileJson, Undo, Redo, Save, Calendar, ZoomIn, ZoomOut } from 'lucide-react';
-import { useRef } from 'react';
+import { Upload, FileJson, Undo, Redo, Save, Calendar, ZoomIn, ZoomOut, ChevronDown, FileCode2, Pencil, FolderOpen } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { GanttProject } from '../../domain/models';
 
 interface HeaderProps {
@@ -19,15 +19,51 @@ interface HeaderProps {
   onSetZoomPreset?: (preset: 'DIA' | 'SEMANA' | 'MES') => void;
   canZoomIn?: boolean;
   canZoomOut?: boolean;
+  onRenameProject?: (name: string) => void;
+  currentFile?: import('@/types/fileSystem').CurrentFile;
+  onSaveOverwrite?: () => Promise<boolean>;
+  onSaveCopy?: () => Promise<void>;
+  onExportHtml?: () => Promise<void>;
+  onOpenMaximaClick?: () => void;
+  saveStatus?: 'idle' | 'saving' | 'saved';
 }
 
 export function Header({ 
   project, onImportXml, onImportMaxima, importState, 
   canUndo, canRedo, onUndo, onRedo, isDirty, setIsDirty,
-  zoomLevel = 32, onZoomIn, onZoomOut, onSetZoomPreset, canZoomIn, canZoomOut
+  zoomLevel = 32, onZoomIn, onZoomOut, onSetZoomPreset, canZoomIn, canZoomOut,
+  onRenameProject, currentFile, onSaveOverwrite, onSaveCopy, onExportHtml, onOpenMaximaClick, saveStatus
 }: HeaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const maximaInputRef = useRef<HTMLInputElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState(project.name);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+
+  const handleNameSave = () => {
+    const trimmed = editName.trim();
+    if (trimmed && trimmed !== project.name) {
+      onRenameProject?.(trimmed);
+    } else {
+      setEditName(project.name);
+    }
+    setIsEditingName(false);
+  };
+
+  const handleNameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleNameSave();
+    } else if (e.key === 'Escape') {
+      setEditName(project.name);
+      setIsEditingName(false);
+    }
+  };
+
+  const startEditingName = () => {
+    setEditName(project.name);
+    setIsEditingName(true);
+    setTimeout(() => nameInputRef.current?.select(), 0);
+  };
 
   const handleXmlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -54,23 +90,7 @@ export function Header({
       }
     };
     reader.readAsText(file);
-    if (maximaInputRef.current) maximaInputRef.current.value = '';
-  };
-
-  const handleSave = () => {
-    const data = JSON.stringify({
-      format: 'project-maxima',
-      version: 1,
-      project
-    }, null, 2);
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${project.name}.maxima.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setIsDirty(false);
+    e.target.value = '';
   };
 
   return (
@@ -79,8 +99,37 @@ export function Header({
         <div className="w-8 h-8 bg-blue-600 rounded-md flex items-center justify-center shadow-sm">
           <Calendar className="text-white" size={18} />
         </div>
-        <h1 className="text-xl font-semibold text-gray-900 tracking-tight truncate max-w-[200px]" title={project.name}>{project.name}</h1>
-        {isDirty && <span className="text-xs text-amber-500 font-medium italic">Cambios sin guardar</span>}
+        {isEditingName ? (
+          <input
+            ref={nameInputRef}
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={handleNameSave}
+            onKeyDown={handleNameKeyDown}
+            className="text-xl font-semibold text-gray-900 tracking-tight bg-white border border-blue-400 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-[500px]"
+            autoFocus
+          />
+        ) : (
+          <div className="flex items-center gap-1.5 group/name cursor-pointer" onDoubleClick={startEditingName}>
+            <h1 className="text-xl font-semibold text-gray-900 tracking-tight truncate max-w-[500px]" title={currentFile?.name ? currentFile.name : project.name}>{project.name}</h1>
+            <button
+              onClick={startEditingName}
+              className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover/name:opacity-100 transition-opacity"
+              title="Renombrar proyecto"
+            >
+              <Pencil size={14} />
+            </button>
+          </div>
+        )}
+        {saveStatus === 'saving' ? (
+          <span className="text-xs text-blue-500 font-medium animate-pulse">Guardando...</span>
+        ) : saveStatus === 'saved' ? (
+          <span className="text-xs text-blue-500 font-medium">Guardado</span>
+        ) : isDirty ? (
+          <span className="text-xs text-gray-500 font-medium">Cambios sin guardar</span>
+        ) : (
+          <span className="text-xs text-gray-400 font-medium">Sin cambios</span>
+        )}
         {importState === 'importing' && (
           <span className="text-sm text-blue-500 animate-pulse">Importando...</span>
         )}
@@ -152,9 +201,7 @@ export function Header({
           </button>
         </div>
 
-        <div className="w-px h-6 bg-gray-200 mx-1" />
-
-        {/* Hidden inputs */}
+        <div className="w-px h-6 bg-gray-200 mx-1" />        {/* Hidden inputs */}
         <input 
           type="file" 
           ref={fileInputRef} 
@@ -164,28 +211,70 @@ export function Header({
         />
         <input 
           type="file" 
-          ref={maximaInputRef} 
+          id="hidden-maxima-input"
           onChange={handleMaximaChange} 
-          accept=".json" 
+          accept=".json,.maxima.json" 
           className="hidden" 
         />
 
-        <button 
-          onClick={handleSave}
-          className="flex items-center space-x-2 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md font-medium text-sm hover:bg-gray-200 transition-colors shadow-sm"
-          title="Guardar localmente"
-        >
-          <Save size={16} />
-          <span>Guardar</span>
-        </button>
+        <div className="flex items-stretch bg-gray-100 rounded-md shadow-sm border border-gray-200 relative z-40">
+          <button 
+            disabled={!isDirty}
+            onClick={async () => {
+              if (currentFile?.type === 'maxima' && currentFile.handle) {
+                const success = await onSaveOverwrite?.();
+                if (!success) {
+                  setShowSaveModal(true);
+                }
+              } else {
+                setShowSaveModal(true);
+              }
+            }}
+            className={`flex items-center space-x-2 px-3 py-1.5 font-medium text-sm transition-colors rounded-l-md border-r border-gray-200 ${
+              !isDirty
+                ? 'text-gray-400 cursor-not-allowed opacity-70'
+                : 'text-gray-700 hover:bg-gray-200'
+            }`}
+            title={!isDirty ? 'No hay cambios para guardar' : 'Guardar cambios'}
+          >
+            <Save size={16} />
+            <span>Guardar</span>
+          </button>
+          
+          <div className="relative group flex">
+            <button 
+              className="px-1.5 py-1.5 text-gray-700 hover:bg-gray-200 transition-colors rounded-r-md flex items-center h-full"
+              title="Más opciones"
+            >
+              <ChevronDown size={14} className="opacity-70" />
+            </button>
+            {/* Dropdown Menu */}
+            <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
+              <button 
+                onClick={onSaveCopy}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 rounded-t-md"
+              >
+                <FileJson size={14} className="text-blue-600" /> 
+                Formato Maxima (JSON)
+              </button>
+              <button 
+                onClick={onExportHtml}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 border-t border-gray-100 rounded-b-md"
+              >
+                <FileCode2 size={14} className="text-orange-500" /> 
+                Exportar HTML
+              </button>
+            </div>
+          </div>
+        </div>
         
         <button 
-          onClick={() => maximaInputRef.current?.click()}
+          onClick={onOpenMaximaClick}
           disabled={importState === 'importing'}
           className="flex items-center space-x-2 px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-md font-medium text-sm hover:bg-gray-50 transition-colors disabled:opacity-50 shadow-sm"
-          title="Importar proyecto .maxima.json"
+          title="Abrir proyecto Maxima"
         >
-          <FileJson size={16} />
+          <FolderOpen size={16} />
         </button>
 
         <button 
@@ -197,6 +286,49 @@ export function Header({
           <span>Importar XML</span>
         </button>
       </div>
+
+      {/* Modal Guardar */}
+      {showSaveModal && currentFile && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/20" onClick={() => setShowSaveModal(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-80 overflow-visible" onClick={e => e.stopPropagation()}>
+             <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center">
+               <h3 className="font-semibold text-gray-800 text-sm">Guardar cambios</h3>
+               <button onClick={() => setShowSaveModal(false)} className="text-gray-400 hover:text-gray-600">×</button>
+             </div>
+             <div className="p-4 space-y-3">
+               
+               <div className="space-y-2 relative">
+                 <div className="group/btn relative">
+                   <button 
+                     onClick={() => { onSaveOverwrite?.(); setShowSaveModal(false); }} 
+                     disabled={currentFile.type !== 'maxima'}
+                     className="w-full text-left px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md disabled:opacity-50 disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed font-medium text-sm transition-colors"
+                   >
+                     Sobrescribir
+                   </button>
+                   {currentFile.type === 'xml-import' && (
+                     <div className="hidden group-hover/btn:block absolute left-full ml-2 top-0 w-48 p-2 bg-gray-800 text-white text-xs rounded shadow-lg z-10 pointer-events-none">
+                       Los proyectos XML importados deben guardarse primero como archivo Maxima.
+                     </div>
+                   )}
+                   {currentFile.type === 'new' && (
+                     <div className="hidden group-hover/btn:block absolute left-full ml-2 top-0 w-48 p-2 bg-gray-800 text-white text-xs rounded shadow-lg z-10 pointer-events-none">
+                       Aún no hay un archivo asociado. Utiliza 'Guardar copia'.
+                     </div>
+                   )}
+                 </div>
+
+                 <button 
+                   onClick={() => { onSaveCopy?.(); setShowSaveModal(false); }} 
+                   className="w-full text-left px-3 py-2 border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-md font-medium text-sm transition-colors"
+                 >
+                   Guardar copia
+                 </button>
+               </div>
+             </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

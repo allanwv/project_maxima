@@ -149,6 +149,7 @@ export function importProjectXml(xmlString: string): GanttProject {
     const taskNodes = getChildNodes(tasksNode, 'Task');
     for (const tNode of taskNodes) {
       const uid = getChildNodeText(tNode, 'UID');
+      const sourceId = getChildNodeText(tNode, 'ID');
       if (!uid) continue;
 
       const isNull = getChildNodeText(tNode, 'IsNull') === '1' || getChildNodeText(tNode, 'IsNull') === 'true';
@@ -232,13 +233,19 @@ export function importProjectXml(xmlString: string): GanttProject {
           else if (typeNum === '1') type = "FS";
           else if (typeNum === '2') type = "SF";
           else if (typeNum === '3') type = "SS";
-          const lag = parseInt(getChildNodeText(pNode, 'LinkLag') || "0", 10);
-          dependencies.push({ taskId: predUid, type, lag });
+          // Lag is usually stored in tenths of a minute (e.g. 4800 = 8 hours)
+          // 4800 / 10 = 480 minutes = 1 day (if MinutesPerDay is 480)
+          const rawLag = parseInt(getChildNodeText(pNode, 'LinkLag') || "0", 10);
+          // Simple heuristic for lag in days:
+          const lagMinutes = rawLag / 10;
+          const lagDays = lagMinutes / minutesPerDay;
+          dependencies.push({ taskId: predUid, type, lag: lagDays });
         }
       }
 
       rawTasks.push({
         uid,
+        sourceId,
         name,
         startStr,
         finishStr,
@@ -294,15 +301,13 @@ export function importProjectXml(xmlString: string): GanttProject {
       parentId = undefined;
     }
 
-    const safeStart = rt.startStr || new Date().toISOString();
-    const safeEnd = rt.finishStr || safeStart;
-
     tasks.push({
       id: rt.uid,
+      sourceId: rt.sourceId,
       parentId,
       name: rt.name,
-      start: safeStart,
-      end: safeEnd,
+      start: rt.startStr || new Date().toISOString(),
+      end: rt.finishStr || rt.startStr || new Date().toISOString(),
       duration: rt.parsedDurationDays,
       progress: Math.max(0, Math.min(100, rt.percentComplete)), // Clamp 0-100
       milestone: rt.milestone,

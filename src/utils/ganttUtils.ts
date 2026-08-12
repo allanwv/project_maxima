@@ -6,6 +6,7 @@ export interface RenderTask extends GanttTask {
   depth: number;
   hasChildren: boolean;
   isVisible: boolean;
+  displayId: number;
 }
 
 export function formatDateCompact(isoStr: string | undefined): string {
@@ -112,7 +113,8 @@ export function buildTaskHierarchy(tasks: GanttTask[], expandedIds: Set<string>)
         ...child,
         depth,
         hasChildren,
-        isVisible
+        isVisible,
+        displayId: result.length + 1
       });
 
       if (hasChildren) {
@@ -136,4 +138,14 @@ export function getDaysBetween(start: Date, end: Date): Date[] {
     current = addDays(current, 1);
   }
   return days;
+}
+
+/**
+ * Resolves the display ID for a given task UID.
+ * The tasks array passed here MUST be the result of buildTaskHierarchy 
+ * so it contains the correctly computed displayIds.
+ */
+export function getDisplayIdByTaskUid(tasks: RenderTask[], uid: string): number | null {
+  const task = tasks.find(t => t.id === uid);
+  return task ? task.displayId : null;
 }
