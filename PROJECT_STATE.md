@@ -105,6 +105,24 @@ Modelos definidos en `src/domain/models.ts`:
     - Undo/Redo atómico para todas las operaciones CRUD.
     - Save/Load `.maxima.json` preserva UIDs, jerarquía y dependencias.
 
+  - **FASE 5 - Selector de Columnas Visibles**:
+    - Definición centralizada de columnas en `src/domain/columnDefinitions.ts` (GanttColumnId, GanttColumnDefinition).
+    - 12 columnas totales: 7 core (visibles por defecto) + 5 opcionales (ocultas por defecto).
+    - Nuevas columnas opcionales: Responsables, aS (Inicio real), aF (Fin real), bS (Inicio línea base), bF (Fin línea base).
+    - Responsables resuelve `task.resourceIds` contra `project.resources` (solo Resource Assignments, no Contact).
+    - Fechas opcionales muestran celda vacía si no existen (sin N/A ni fallback).
+    - Botón `Columnas` con popover para marcar/desmarcar columnas visibles (cambios inmediatos).
+    - Columna `Nombre` obligatoria (`alwaysVisible`), aparece disabled en selector.
+    - Persistencia en localStorage: `maxima:gantt-visible-columns` y `maxima:gantt-column-widths`.
+    - NO se guarda en `.maxima.json` (es preferencia local del usuario).
+    - Ocultar una columna preserva su ancho; al reshowrla recupera el tamaño.
+    - Fallback seguro ante datos corruptos o IDs desconocidos en localStorage.
+    - Hook `useColumnVisibility` gestiona estado, persistencia y reset.
+    - Botón "Restaurar predeterminadas" regresa a estado default.
+    - Columnas opcionales son solo lectura por ahora.
+    - 22 tests unitarios para columnDefinitions (defaults, toggle, persistence, reset, widths).
+    - Documentación completa en `docs/COLUMNS.md`.
+
 ### Próximos Pasos (Futuro - Post MVP)
 - **FASE 4B**: Reorder + Indent/Outdent + Drag vertical.
 - **Integrar Scheduling Engine con UI**: Conectar la lógica pura a eventos de Drag & Drop, resize y edición de celdas fecha/duración.

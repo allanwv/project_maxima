@@ -4,12 +4,11 @@ import { useState, useRef, useEffect } from 'react';
 import { GanttProject, GanttTask } from '../../domain/models';
 import { getProjectDateRange, buildTaskHierarchy } from '../../utils/ganttUtils';
 import { scheduleProjectAfterTaskChange } from '../../domain/scheduling/schedulingEngine';
+import { GanttColumnId } from '../../domain/columnDefinitions';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { GanttTable } from './GanttTable';
 import { GanttTimeline } from './GanttTimeline';
-
-export const DEFAULT_COLUMN_WIDTHS = { id: 55, name: 280, progress: 65, duration: 105, es: 110, ef: 110, predecessors: 120 };
-export const MIN_COLUMN_WIDTHS = { id: 45, name: 160, progress: 50, duration: 85, es: 85, ef: 85, predecessors: 90 };
-export type ColumnWidths = typeof DEFAULT_COLUMN_WIDTHS;
+import { ColumnSelectorButton } from './ColumnSelectorButton';
 
 interface GanttChartProps {
   project: GanttProject;
@@ -39,18 +38,17 @@ export function GanttChart({
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const timelineContainerRef = useRef<HTMLDivElement>(null);
 
-  // Column widths state
-  const [columnWidths, setColumnWidths] = useState<ColumnWidths>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('maxima:gantt-column-widths');
-      if (saved) {
-        try {
-          return { ...DEFAULT_COLUMN_WIDTHS, ...JSON.parse(saved) };
-        } catch (e) {}
-      }
-    }
-    return DEFAULT_COLUMN_WIDTHS;
-  });
+  // Column visibility & widths (centralized)
+  const {
+    visibleColumns,
+    visibleColumnDefs,
+    columnWidths,
+    totalWidth,
+    toggleColumn,
+    isColumnVisible,
+    resetToDefaults,
+    resizeColumn,
+  } = useColumnVisibility();
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
@@ -63,18 +61,11 @@ export function GanttChart({
   });
 
   useEffect(() => {
-    localStorage.setItem('maxima:gantt-column-widths', JSON.stringify(columnWidths));
-  }, [columnWidths]);
-
-  useEffect(() => {
     localStorage.setItem('maxima:gantt-table-width', tableWidth.toString());
   }, [tableWidth]);
 
-  const handleResizeColumn = (col: keyof ColumnWidths, delta: number, startWidth: number) => {
-    setColumnWidths(prev => ({
-      ...prev,
-      [col]: Math.max(MIN_COLUMN_WIDTHS[col], startWidth + delta)
-    }));
+  const handleResizeColumn = (colId: GanttColumnId, delta: number, startWidth: number) => {
+    resizeColumn(colId, delta, startWidth);
   };
 
   const handleSplitterPointerDown = (e: React.PointerEvent) => {
@@ -164,66 +155,88 @@ export function GanttChart({
   };
 
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
 
   const { start, end } = getProjectDateRange(project.tasks);
   const renderTasks = buildTaskHierarchy(project.tasks, expandedIds);
 
   return (
-    <div className="flex flex-1 overflow-hidden bg-white border border-gray-200 rounded-lg shadow-sm m-4">
-      {/* Left Table */}
-      <div 
-        ref={tableContainerRef}
-        onScroll={handleScroll}
-        className="flex-shrink-0 overflow-auto relative scrollbar-gantt"
-        style={{ width: tableWidth }}
-      >
-        <GanttTable 
-          tasks={renderTasks} 
-          onToggleExpand={toggleExpand} 
-          expandedIds={expandedIds}
-          columnWidths={columnWidths}
-          onResizeColumn={handleResizeColumn}
-          updateTask={handleTaskUpdate}
-          updateTasks={updateTasks}
-          selectedTaskId={selectedTaskId}
-          onSelectTask={setSelectedTaskId}
-          onAddTask={handleAddTask}
-          onAddSubtask={handleAddSubtask}
-          onDeleteTask={handleDeleteTask}
-          onMoveTask={onMoveTask}
-          onIndentTask={onIndentTask}
-          onOutdentTask={onOutdentTask}
-          canIndentTask={canIndentTask}
-          editingTaskId={editingTaskId}
-          onClearEditingTask={() => setEditingTaskId(null)}
-          allTasks={project.tasks}
+    <div className="flex flex-col flex-1 overflow-hidden bg-white border border-gray-200 rounded-lg shadow-sm m-4">
+      {/* Column selector toolbar */}
+      <div className="flex items-center px-2 py-1 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
+        <ColumnSelectorButton
+          visibleColumns={visibleColumns}
+          onToggle={toggleColumn}
+          onReset={resetToDefaults}
+          tasks={project.tasks}
+          resources={project.resources}
         />
       </div>
+      
+      {/* Main gantt area */}
+      <div className="flex flex-1 overflow-hidden" onClick={() => setSelectedTaskId(null)}>
+        {/* Left Table */}
+        <div 
+          ref={tableContainerRef}
+          onScroll={handleScroll}
+          className="flex-shrink-0 overflow-auto relative scrollbar-gantt"
+          style={{ width: tableWidth }}
+        >
+          <GanttTable 
+            tasks={renderTasks} 
+            onToggleExpand={toggleExpand} 
+            expandedIds={expandedIds}
+            visibleColumns={visibleColumns}
+            visibleColumnDefs={visibleColumnDefs}
+            columnWidths={columnWidths}
+            onResizeColumn={handleResizeColumn}
+            updateTask={handleTaskUpdate}
+            updateTasks={updateTasks}
+            selectedTaskId={selectedTaskId}
+            onSelectTask={setSelectedTaskId}
+            onAddTask={handleAddTask}
+            onAddSubtask={handleAddSubtask}
+            onDeleteTask={handleDeleteTask}
+            onMoveTask={onMoveTask}
+            onIndentTask={onIndentTask}
+            onOutdentTask={onOutdentTask}
+            canIndentTask={canIndentTask}
+            editingTaskId={editingTaskId}
+            onClearEditingTask={() => setEditingTaskId(null)}
+            allTasks={project.tasks}
+            resources={project.resources}
+            hoveredTaskId={hoveredTaskId}
+            onHoverTask={setHoveredTaskId}
+          />
+        </div>
 
-      {/* Splitter */}
-      <div 
-        onPointerDown={handleSplitterPointerDown}
-        className="w-1 bg-gray-200 hover:bg-blue-400 cursor-col-resize z-30 flex-shrink-0 transition-colors relative"
-      >
-        {/* Invisible wider hit area for easier grabbing */}
-        <div className="absolute inset-y-0 -left-1 -right-1" />
-      </div>
+        {/* Splitter */}
+        <div 
+          onPointerDown={handleSplitterPointerDown}
+          className="w-1 bg-gray-200 hover:bg-blue-400 cursor-col-resize z-30 flex-shrink-0 transition-colors relative"
+        >
+          {/* Invisible wider hit area for easier grabbing */}
+          <div className="absolute inset-y-0 -left-1 -right-1" />
+        </div>
 
-      {/* Right Timeline */}
-      <div 
-        ref={timelineContainerRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-auto scrollbar-gantt relative"
-      >
-        <GanttTimeline 
-          tasks={renderTasks} 
-          startDate={start} 
-          endDate={end}
-          updateTask={handleTaskUpdate}
-          selectedTaskId={selectedTaskId}
-          onSelectTask={setSelectedTaskId}
-          zoomLevel={zoomLevel}
-        />
+        {/* Right Timeline */}
+        <div 
+          ref={timelineContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-auto scrollbar-gantt relative"
+        >
+          <GanttTimeline 
+            tasks={renderTasks} 
+            startDate={start} 
+            endDate={end}
+            updateTask={handleTaskUpdate}
+            selectedTaskId={selectedTaskId}
+            onSelectTask={setSelectedTaskId}
+            zoomLevel={zoomLevel}
+            hoveredTaskId={hoveredTaskId}
+            onHoverTask={setHoveredTaskId}
+          />
+        </div>
       </div>
     </div>
   );

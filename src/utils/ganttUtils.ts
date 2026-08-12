@@ -7,6 +7,7 @@ export interface RenderTask extends GanttTask {
   hasChildren: boolean;
   isVisible: boolean;
   displayId: number;
+  ancestorsIsLast: boolean[];
 }
 
 export function formatDateCompact(isoStr: string | undefined): string {
@@ -104,27 +105,31 @@ export function buildTaskHierarchy(tasks: GanttTask[], expandedIds: Set<string>)
     childrenMap.get(parentId)!.push(t);
   });
 
-  function traverse(parentId: string, depth: number, isVisible: boolean) {
+  function traverse(parentId: string, depth: number, isVisible: boolean, ancestorsIsLast: boolean[]) {
     const children = childrenMap.get(parentId) || [];
-    children.forEach(child => {
+    children.forEach((child, index) => {
       const hasChildren = (childrenMap.get(child.id) || []).length > 0;
+      const isLastChild = index === children.length - 1;
       
+      const currentAncestorsIsLast = [...ancestorsIsLast, isLastChild];
+
       result.push({
         ...child,
         depth,
         hasChildren,
         isVisible,
-        displayId: result.length + 1
+        displayId: result.length + 1,
+        ancestorsIsLast: currentAncestorsIsLast
       });
 
       if (hasChildren) {
         const isExpanded = expandedIds.has(child.id);
-        traverse(child.id, depth + 1, isVisible && isExpanded);
+        traverse(child.id, depth + 1, isVisible && isExpanded, currentAncestorsIsLast);
       }
     });
   }
 
-  traverse('root', 0, true);
+  traverse('root', 0, true, []);
   return result;
 }
 

@@ -94,7 +94,7 @@ export function Header({
   };
 
   return (
-    <header className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white flex-shrink-0">
+    <header className="relative z-50 flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white flex-shrink-0">
       <div className="flex items-center gap-4">
         <div className="w-8 h-8 bg-blue-600 rounded-md flex items-center justify-center shadow-sm">
           <Calendar className="text-white" size={18} />
@@ -249,13 +249,13 @@ export function Header({
               <ChevronDown size={14} className="opacity-70" />
             </button>
             {/* Dropdown Menu */}
-            <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
+            <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
               <button 
                 onClick={onSaveCopy}
                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 rounded-t-md"
               >
                 <FileJson size={14} className="text-blue-600" /> 
-                Formato Maxima (JSON)
+                JSON (compatible)
               </button>
               <button 
                 onClick={onExportHtml}

@@ -12,6 +12,8 @@ src/
 │   ├── gantt/    # Componentes específicos de la vista Gantt
 │   └── ui/       # Componentes base
 ├── domain/       # Modelos e interfaces TypeScript (Independientes de React)
+│   ├── columnDefinitions.ts  # Catálogo centralizado de columnas (IDs, labels, widths, visibilidad)
+├── hooks/        # Custom hooks (useProjectEditor, useColumnVisibility, useZoom, useSaveFile)
 ├── importers/    # Lógica de importación (POD, XML a Modelos de Dominio)
 ├── mock/         # Datos estáticos para pruebas
 └── utils/        # Funciones utilitarias generales

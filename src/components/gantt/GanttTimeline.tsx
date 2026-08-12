@@ -12,9 +12,14 @@ interface GanttTimelineProps {
   selectedTaskId: string | null;
   onSelectTask: (taskId: string) => void;
   zoomLevel?: number;
+  hoveredTaskId?: string | null;
+  onHoverTask?: (taskId: string | null) => void;
 }
 
-export function GanttTimeline({ tasks, startDate, endDate, updateTask, selectedTaskId, onSelectTask, zoomLevel = 32 }: GanttTimelineProps) {
+export function GanttTimeline({ 
+  tasks, startDate, endDate, updateTask, selectedTaskId, onSelectTask, zoomLevel = 32,
+  hoveredTaskId, onHoverTask
+}: GanttTimelineProps) {
   const visibleTasks = tasks.filter(t => t.isVisible);
   const days = getDaysBetween(startDate, endDate);
   const cellWidth = zoomLevel; 
@@ -24,7 +29,7 @@ export function GanttTimeline({ tasks, startDate, endDate, updateTask, selectedT
   return (
     <div className="relative" style={{ width: days.length * cellWidth, minWidth: '100%' }}>
       {/* Header */}
-      <div className="h-[var(--header-height)] border-b border-gray-200 bg-gray-50/80 backdrop-blur-sm sticky top-0 z-20 flex flex-col">
+      <div className="h-[var(--header-height)] border-b border-gray-200 bg-gray-50 sticky top-0 z-40 flex flex-col">
         {/* Months Row (simplified: just grouping by month roughly or just showing the month at the start of each day if it changes, 
             for simplicity let's just show Days directly with Month above) */}
         <div className="flex-1 flex border-b border-gray-100">
@@ -215,11 +220,15 @@ export function GanttTimeline({ tasks, startDate, endDate, updateTask, selectedT
             const width = durationDays * cellWidth;
             
             const isSelected = selectedTaskId === task.id;
+            const isHovered = hoveredTaskId === task.id;
             return (
               <div
                 key={task.id}
+                onMouseEnter={() => onHoverTask?.(task.id)}
+                onMouseLeave={() => onHoverTask?.(null)}
+                onClick={(e) => { e.stopPropagation(); onSelectTask(task.id); }}
                 className={`relative flex items-center border-b border-gray-100/0 transition-colors group
-                  ${isSelected ? 'bg-blue-50/60' : 'hover:bg-gray-50/40'}
+                  ${isSelected ? 'bg-blue-100' : isHovered ? 'bg-gray-100/80' : ''}
                 `}
                 style={{ height: 'var(--row-height)' }}
               >

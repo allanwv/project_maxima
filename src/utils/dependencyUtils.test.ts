@@ -5,11 +5,11 @@ import { GanttTask, GanttDependency } from '../domain/models';
 
 describe('dependencyUtils', () => {
   const mockTasks: RenderTask[] = [
-    { id: 'u1', displayId: 1, name: 'T1', start: '', end: '', duration: 1, progress: 0, milestone: false, dependencies: [], resourceIds: [], depth: 0, hasChildren: false, isVisible: true },
-    { id: 'u2', displayId: 2, name: 'T2', start: '', end: '', duration: 1, progress: 0, milestone: false, dependencies: [], resourceIds: [], depth: 0, hasChildren: false, isVisible: true },
-    { id: 'u3', displayId: 3, name: 'T3', start: '', end: '', duration: 1, progress: 0, milestone: false, dependencies: [], resourceIds: [], depth: 0, hasChildren: false, isVisible: true },
-    { id: 'u4', displayId: 4, name: 'T4', start: '', end: '', duration: 1, progress: 0, milestone: false, dependencies: [], resourceIds: [], depth: 0, hasChildren: false, isVisible: true },
-    { id: 'u8', displayId: 8, name: 'T8', start: '', end: '', duration: 1, progress: 0, milestone: false, dependencies: [], resourceIds: [], depth: 0, hasChildren: false, isVisible: true },
+    { id: 'u1', displayId: 1, name: 'T1', start: '', end: '', duration: 1, progress: 0, milestone: false, dependencies: [], resourceIds: [], depth: 0, hasChildren: false, isVisible: true, ancestorsIsLast: [] },
+    { id: 'u2', displayId: 2, name: 'T2', start: '', end: '', duration: 1, progress: 0, milestone: false, dependencies: [], resourceIds: [], depth: 0, hasChildren: false, isVisible: true, ancestorsIsLast: [] },
+    { id: 'u3', displayId: 3, name: 'T3', start: '', end: '', duration: 1, progress: 0, milestone: false, dependencies: [], resourceIds: [], depth: 0, hasChildren: false, isVisible: true, ancestorsIsLast: [] },
+    { id: 'u4', displayId: 4, name: 'T4', start: '', end: '', duration: 1, progress: 0, milestone: false, dependencies: [], resourceIds: [], depth: 0, hasChildren: false, isVisible: true, ancestorsIsLast: [] },
+    { id: 'u8', displayId: 8, name: 'T8', start: '', end: '', duration: 1, progress: 0, milestone: false, dependencies: [], resourceIds: [], depth: 0, hasChildren: false, isVisible: true, ancestorsIsLast: [] },
   ];
 
   describe('parseDependencyExpression', () => {
