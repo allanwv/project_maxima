@@ -1,12 +1,12 @@
 import { ChevronDown, ChevronRight, Plus, Trash2, MoreHorizontal, GripVertical, Indent as IndentIcon, Outdent as OutdentIcon } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { format, parseISO } from 'date-fns';
 import { RenderTask, calculateEditedEnd, calculateEditedDuration, getDisplayIdByTaskUid } from '../../utils/ganttUtils';
 import { parseDependencyExpression, formatDependencyTooltip } from '../../utils/dependencyUtils';
 import { GanttColumnId, GanttColumnDefinition } from '../../domain/columnDefinitions';
 import { EditableCell } from './EditableCell';
 import { GanttTask, GanttResource } from '../../domain/models';
-import { findDependentTasks, getDescendantIds } from '../../domain/taskUtils';
 
 interface GanttTableProps {
   tasks: RenderTask[];
@@ -25,7 +25,6 @@ interface GanttTableProps {
   onDeleteTask?: (taskId: string) => void;
   editingTaskId?: string | null;
   onClearEditingTask?: () => void;
-  allTasks?: GanttTask[];
   onMoveTask?: (sourceId: string, targetId: string, position: 'before' | 'after') => void;
   onIndentTask?: (taskId: string) => void;
   onOutdentTask?: (taskId: string) => void;
@@ -52,128 +51,117 @@ const ResizeHandle = ({ col, onPointerDown }: ResizeHandleProps) => (
 
 function TaskActionMenu({ 
   task, 
+  isSelected,
   onAddSubtask, 
   onDeleteTask, 
-  allTasks,
   onIndentTask,
   onOutdentTask,
   canIndentTask
 }: { 
   task: RenderTask; 
+  isSelected: boolean;
   onAddSubtask?: (id: string) => void; 
   onDeleteTask?: (id: string) => void; 
-  allTasks?: GanttTask[]; 
   onIndentTask?: (taskId: string) => void;
   onOutdentTask?: (taskId: string) => void;
   canIndentTask?: (taskId: string) => boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        menuRef.current && !menuRef.current.contains(target) &&
+        triggerRef.current && !triggerRef.current.contains(target)
+      ) {
         setOpen(false);
-        setConfirmDelete(false);
       }
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    const handleScroll = () => setOpen(false);
+
+    document.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
   }, [open]);
 
-  const descendants = allTasks ? getDescendantIds(allTasks, task.id) : [];
-  const deletedIds = new Set([task.id, ...descendants]);
-  const dependentTasks = allTasks ? findDependentTasks(allTasks, deletedIds) : [];
-
-  const handleDeleteClick = () => {
-    if (descendants.length > 0 || dependentTasks.length > 0) {
-      setConfirmDelete(true);
-    } else {
-      onDeleteTask?.(task.id);
+  const handleToggleMenu = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (open) {
       setOpen(false);
+      return;
     }
-  };
-
-  const handleConfirmDelete = () => {
-    onDeleteTask?.(task.id);
-    setOpen(false);
-    setConfirmDelete(false);
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      const menuHeight = 165;
+      const menuWidth = 208;
+      const openUpward = window.innerHeight - rect.bottom < menuHeight && rect.top > menuHeight;
+      const top = openUpward ? rect.top - menuHeight - 4 : rect.bottom + 4;
+      const left = Math.min(rect.left, window.innerWidth - menuWidth - 8);
+      setMenuPos({ top: Math.max(8, top), left: Math.max(8, left) });
+    }
+    setOpen(true);
   };
 
   return (
-    <div className="relative" ref={menuRef}>
+    <div className="relative flex items-center">
       <button
-        onClick={(e) => { e.stopPropagation(); setOpen(!open); setConfirmDelete(false); }}
-        className="p-0.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100"
-        title="Acciones"
+        ref={triggerRef}
+        onClick={handleToggleMenu}
+        className={`p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-700 transition-colors ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+        title="Más acciones"
       >
         <MoreHorizontal size={14} />
       </button>
-      {open && (
-        <div className="absolute left-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-50 py-1 text-sm" onClick={(e) => e.stopPropagation()}>
-          {!confirmDelete ? (
-            <>
-              <button
-                onClick={() => { onAddSubtask?.(task.id); setOpen(false); }}
-                className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2 text-gray-700"
-              >
-                <Plus size={14} className="text-blue-500" /> Agregar subtarea
-              </button>
-              <div className="border-t border-gray-100 my-1" />
-              <button
-                onClick={() => { onIndentTask?.(task.id); setOpen(false); }}
-                disabled={!canIndentTask?.(task.id)}
-                className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <IndentIcon size={14} className="text-gray-500" /> Indentar
-              </button>
-              <button
-                onClick={() => { onOutdentTask?.(task.id); setOpen(false); }}
-                disabled={!task.parentId}
-                className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <OutdentIcon size={14} className="text-gray-500" /> Desindentar
-              </button>
-              <div className="border-t border-gray-100 my-1" />
-              <button
-                onClick={handleDeleteClick}
-                className="w-full text-left px-3 py-1.5 hover:bg-red-50 flex items-center gap-2 text-red-600"
-              >
-                <Trash2 size={14} /> Eliminar
-              </button>
-            </>
-          ) : (
-            <div className="px-3 py-2">
-              <p className="text-xs text-gray-700 font-medium mb-1">¿Confirmar eliminación?</p>
-              {descendants.length > 0 && (
-                <p className="text-[11px] text-amber-600 mb-1">
-                  Contiene {descendants.length} subtarea{descendants.length > 1 ? 's' : ''} que también se eliminarán.
-                </p>
-              )}
-              {dependentTasks.length > 0 && (
-                <p className="text-[11px] text-amber-600 mb-1">
-                  {dependentTasks.length} tarea{dependentTasks.length > 1 ? 's' : ''} depende{dependentTasks.length === 1 ? '' : 'n'} de esta actividad.
-                </p>
-              )}
-              <div className="flex gap-2 mt-2">
-                <button
-                  onClick={handleConfirmDelete}
-                  className="flex-1 px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors"
-                >
-                  Eliminar
-                </button>
-                <button
-                  onClick={() => { setConfirmDelete(false); setOpen(false); }}
-                  className="flex-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded hover:bg-gray-200 transition-colors"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+      {open && menuPos && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={menuRef}
+          style={{ top: menuPos.top, left: menuPos.left }}
+          className="fixed w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-[120] py-1 text-sm"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => { onAddSubtask?.(task.id); setOpen(false); }}
+            className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+          >
+            <Plus size={14} className="text-blue-500" /> Agregar subtarea
+          </button>
+          <div className="border-t border-gray-100 my-1" />
+          <button
+            onClick={() => { onIndentTask?.(task.id); setOpen(false); }}
+            disabled={!canIndentTask?.(task.id)}
+            className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <IndentIcon size={14} className="text-gray-500" /> Indentar
+          </button>
+          <button
+            onClick={() => { onOutdentTask?.(task.id); setOpen(false); }}
+            disabled={!task.parentId}
+            className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <OutdentIcon size={14} className="text-gray-500" /> Desindentar
+          </button>
+          <div className="border-t border-gray-100 my-1" />
+          <button
+            onClick={() => { setOpen(false); onDeleteTask?.(task.id); }}
+            className="w-full text-left px-3 py-1.5 hover:bg-red-50 flex items-center gap-2 text-red-600"
+          >
+            <Trash2 size={14} /> Eliminar
+          </button>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -203,7 +191,7 @@ export function GanttTable({
   visibleColumns, visibleColumnDefs, columnWidths, onResizeColumn, 
   updateTask, selectedTaskId, onSelectTask,
   onAddTask, onAddSubtask, onDeleteTask,
-  editingTaskId, onClearEditingTask, allTasks,
+  editingTaskId, onClearEditingTask,
   onMoveTask, onIndentTask, onOutdentTask, canIndentTask,
   resources = [],
   hoveredTaskId, onHoverTask
@@ -329,13 +317,25 @@ export function GanttTable({
               />
               <TaskActionMenu
                 task={task}
+                isSelected={selectedTaskId === task.id}
                 onAddSubtask={onAddSubtask}
                 onDeleteTask={onDeleteTask}
-                allTasks={allTasks}
                 onIndentTask={onIndentTask}
                 onOutdentTask={onOutdentTask}
                 canIndentTask={canIndentTask}
               />
+              {onDeleteTask && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteTask(task.id);
+                  }}
+                  className={`p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors flex-shrink-0 ${selectedTaskId === task.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  title="Eliminar tarea (Supr)"
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
             </div>
           </div>
         );
@@ -578,11 +578,18 @@ export function GanttTable({
         {onAddTask && (
           <div className="flex items-center h-[var(--row-height)] border-b border-gray-100 hover:bg-gray-50 transition-colors">
             <button
-              onClick={onAddTask}
-              className="flex items-center gap-1.5 px-4 py-1 text-xs text-gray-400 hover:text-blue-600 transition-colors ml-[55px]"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddTask();
+              }}
+              className={`flex items-center gap-1.5 px-4 py-1 text-xs transition-colors ml-[55px] ${
+                visibleTasks.length === 0
+                  ? 'text-blue-600 font-medium hover:text-blue-700'
+                  : 'text-gray-400 hover:text-blue-600'
+              }`}
             >
               <Plus size={14} />
-              <span>Tarea</span>
+              <span>{visibleTasks.length === 0 ? 'Agregar primera tarea' : 'Tarea'}</span>
             </button>
           </div>
         )}

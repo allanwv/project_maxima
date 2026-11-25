@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { GanttTask } from './models';
 import {
+  generateProjectId,
+  createBlankProject,
   generateTaskUid,
   createNewTask,
   getDescendantIds,
@@ -277,6 +279,28 @@ describe('taskUtils', () => {
       ];
       expect(canIndentTask(tasks, 'A')).toBe(false);
       expect(canIndentTask(tasks, 'B')).toBe(true);
+    });
+  });
+
+  describe('createBlankProject', () => {
+    it('creates an empty project with unique ID and default name', () => {
+      const p1 = createBlankProject();
+      const p2 = createBlankProject();
+      expect(p1.id.startsWith('project_')).toBe(true);
+      expect(p1.id).not.toBe(p2.id);
+      expect(p1.name).toBe('Proyecto sin título');
+      expect(p1.tasks).toEqual([]);
+      expect(p1.resources).toEqual([]);
+    });
+
+    it('uses trimmed custom name or falls back to default when blank', () => {
+      expect(createBlankProject('  Mi Plan  ').name).toBe('Mi Plan');
+      expect(createBlankProject('   ').name).toBe('Proyecto sin título');
+    });
+
+    it('generateProjectId generates unique project_ IDs', () => {
+      const id = generateProjectId();
+      expect(id.startsWith('project_')).toBe(true);
     });
   });
 });

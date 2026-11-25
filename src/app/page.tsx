@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FolderOpen } from 'lucide-react';
+import { FilePlus2, FolderOpen } from 'lucide-react';
 import { GanttChart } from '@/components/gantt/GanttChart';
 import { Header } from '@/components/layout/Header';
 import { GanttProject } from '@/domain/models';
+import { createBlankProject } from '@/domain/taskUtils';
 import { importProjectXml } from '@/importers/xml/projectXmlImporter';
 import { useProjectEditor } from '@/hooks/useProjectEditor';
 import { useZoom } from '@/hooks/useZoom';
@@ -50,6 +51,7 @@ export default function Home() {
 
   const [importState, setImportState] = useState<'idle' | 'importing' | 'error' | 'success'>('idle');
   const [errorDetails, setErrorDetails] = useState<string>('');
+  const [hasActiveWorkspace, setHasActiveWorkspace] = useState(false);
 
   const {
     currentFile,
@@ -77,6 +79,21 @@ export default function Home() {
     }
   }, [loadProject]);
 
+  const handleCreateBlankProject = () => {
+    const blank = createBlankProject();
+    loadProject(blank);
+    setCurrentFile({
+      name: blank.name,
+      type: 'new'
+    });
+    localStorage.removeItem('maxima:autosave');
+    setHasActiveWorkspace(true);
+    setImportState('idle');
+    setErrorDetails('');
+  };
+
+  const showGantt = project.tasks.length > 0 || hasActiveWorkspace || project.id !== emptyProject.id;
+
   const handleImportXml = (xmlString: string) => {
     setImportState('importing');
     setErrorDetails('');
@@ -90,6 +107,7 @@ export default function Home() {
           name: 'Importado.xml',
           type: 'xml-import'
         });
+        setHasActiveWorkspace(true);
         setImportState('success');
         
         // Reset success state after a few seconds
@@ -106,6 +124,7 @@ export default function Home() {
     <div className="flex flex-col h-screen bg-gray-50/50">
       <Header 
         project={project}
+        onNewProject={handleCreateBlankProject}
         onImportXml={handleImportXml}
         onImportMaxima={handleImportMaxima}
         importState={importState}
@@ -145,15 +164,31 @@ export default function Home() {
           </div>
         )}
         {/* We key by project id to force remount and reset expand/collapse states on new project */}
-        {project.tasks.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center bg-white border border-gray-200 rounded-lg shadow-sm m-4">
+        {!showGantt ? (
+          <div className="flex-1 flex flex-col items-center justify-center bg-white border border-gray-200 rounded-lg shadow-sm m-4 px-6">
             <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
               <FolderOpen className="text-gray-300" size={32} strokeWidth={1.5} />
             </div>
             <h2 className="text-xl font-medium text-gray-700 tracking-tight mb-2">Sin información que mostrar</h2>
-            <p className="text-sm text-gray-400 text-center max-w-md">
-              Comienza importando un archivo XML desde ProjectLibre o carga un archivo `.json` previo usando los controles superiores.
+            <p className="text-sm text-gray-400 text-center max-w-md mb-6">
+              Crea un proyecto en blanco desde cero, importa un archivo XML desde ProjectLibre o abre un archivo <code className="text-gray-500">.json</code> previo.
             </p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button
+                onClick={handleCreateBlankProject}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md font-medium text-sm hover:bg-blue-700 transition-colors shadow-sm"
+              >
+                <FilePlus2 size={16} />
+                <span>Crear proyecto en blanco</span>
+              </button>
+              <button
+                onClick={handleOpenMaximaClick}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md font-medium text-sm hover:bg-gray-50 transition-colors shadow-sm"
+              >
+                <FolderOpen size={16} />
+                <span>Abrir proyecto (.json)</span>
+              </button>
+            </div>
           </div>
         ) : (
           <GanttChart 

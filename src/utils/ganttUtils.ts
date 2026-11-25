@@ -75,7 +75,11 @@ export function calculateEditedEnd(start: string, durationDays: number): string 
 
 export function getProjectDateRange(tasks: GanttTask[]) {
   if (tasks.length === 0) {
-    return { start: new Date(), end: new Date() };
+    const today = startOfDay(new Date());
+    return {
+      start: addDays(today, -7),
+      end: addDays(today, 21)
+    };
   }
 
   const startDates = tasks.map(t => startOfDay(parseISO(t.start)));

@@ -1,4 +1,27 @@
-import { GanttTask } from './models';
+import { GanttProject, GanttTask } from './models';
+
+/**
+ * Generates a unique ID for a new project.
+ */
+export function generateProjectId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return `project_${crypto.randomUUID()}`;
+  }
+  const hex = () => Math.floor(Math.random() * 0x100000000).toString(16).padStart(8, '0');
+  return `project_${hex()}-${hex()}`;
+}
+
+/**
+ * Creates a fresh blank Gantt project ready for editing.
+ */
+export function createBlankProject(name = 'Proyecto sin título'): GanttProject {
+  return {
+    id: generateProjectId(),
+    name: name.trim() || 'Proyecto sin título',
+    tasks: [],
+    resources: [],
+  };
+}
 
 /**
  * Generates a unique, stable UID for tasks created within Maxima.

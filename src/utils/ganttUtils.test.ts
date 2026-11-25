@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatDateCompact, formatDateFull } from './ganttUtils';
+import { formatDateCompact, formatDateFull, getProjectDateRange } from './ganttUtils';
 
 describe('ganttUtils formatting', () => {
   it('formatDateCompact should return dd-MM-yyyy', () => {
@@ -22,5 +22,11 @@ describe('ganttUtils formatting', () => {
 
     expect(formatDateFull(undefined)).toBe('');
     expect(formatDateFull('invalid')).toBe('');
+  });
+
+  it('getProjectDateRange returns a padded multi-week window for empty projects', () => {
+    const { start, end } = getProjectDateRange([]);
+    const diffDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    expect(diffDays).toBeGreaterThanOrEqual(27);
   });
 });

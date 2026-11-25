@@ -1,9 +1,10 @@
-import { Upload, FileJson, Undo, Redo, Save, Calendar, ZoomIn, ZoomOut, ChevronDown, FileCode2, Pencil, FolderOpen } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { Upload, FileJson, Undo, Redo, Save, Calendar, ZoomIn, ZoomOut, ChevronDown, FileCode2, Pencil, FolderOpen, FilePlus2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { GanttProject } from '../../domain/models';
 
 interface HeaderProps {
   project: GanttProject;
+  onNewProject?: () => void;
   onImportXml: (xml: string) => void;
   onImportMaxima: (json: string) => void;
   importState: 'idle' | 'importing' | 'error' | 'success';
@@ -28,8 +29,8 @@ interface HeaderProps {
   saveStatus?: 'idle' | 'saving' | 'saved';
 }
 
-export function Header({ 
-  project, onImportXml, onImportMaxima, importState, 
+export function Header({
+  project, onNewProject, onImportXml, onImportMaxima, importState,
   canUndo, canRedo, onUndo, onRedo, isDirty, setIsDirty,
   zoomLevel = 32, onZoomIn, onZoomOut, onSetZoomPreset, canZoomIn, canZoomOut,
   onRenameProject, currentFile, onSaveOverwrite, onSaveCopy, onExportHtml, onOpenMaximaClick, saveStatus
@@ -39,6 +40,27 @@ export function Header({
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState(project.name);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showNewProjectModal, setShowNewProjectModal] = useState(false);
+
+  useEffect(() => {
+    if (!showSaveModal && !showNewProjectModal) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowSaveModal(false);
+        setShowNewProjectModal(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showSaveModal, showNewProjectModal]);
+
+  const handleNewProjectClick = () => {
+    if (isDirty || project.tasks.length > 0) {
+      setShowNewProjectModal(true);
+    } else {
+      onNewProject?.();
+    }
+  };
 
   const handleNameSave = () => {
     const trimmed = editName.trim();
@@ -141,16 +163,16 @@ export function Header({
       <div className="flex items-center gap-3">
         {/* Editor Controls */}
         <div className="flex items-center border border-gray-200 rounded-md bg-gray-50 mr-2 shadow-sm">
-          <button 
-            onClick={onUndo} 
+          <button
+            onClick={onUndo}
             disabled={!canUndo}
             title="Deshacer (Ctrl+Z)"
             className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded-l-md border-r border-gray-200"
           >
             <Undo size={16} />
           </button>
-          <button 
-            onClick={onRedo} 
+          <button
+            onClick={onRedo}
             disabled={!canRedo}
             title="Rehacer (Ctrl+Shift+Z)"
             className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded-r-md"
@@ -164,26 +186,26 @@ export function Header({
         {/* Zoom Controls */}
         <div className="flex items-center border border-gray-200 rounded-md bg-gray-50 shadow-sm mr-2">
           <div className="flex bg-gray-100 p-0.5 rounded-l-md border-r border-gray-200">
-            <button 
+            <button
               onClick={() => onSetZoomPreset?.('DIA')}
               className={`px-2 py-1 text-xs font-medium rounded-sm transition-all ${zoomLevel >= 24 ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
             >
               Día
             </button>
-            <button 
+            <button
               onClick={() => onSetZoomPreset?.('SEMANA')}
               className={`px-2 py-1 text-xs font-medium rounded-sm transition-all ${(zoomLevel >= 6 && zoomLevel < 24) ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
             >
               Semana
             </button>
-            <button 
+            <button
               onClick={() => onSetZoomPreset?.('MES')}
               className={`px-2 py-1 text-xs font-medium rounded-sm transition-all ${zoomLevel < 6 ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
             >
               Mes
             </button>
           </div>
-          <button 
+          <button
             onClick={onZoomOut}
             disabled={!canZoomOut}
             title="Alejar"
@@ -191,7 +213,7 @@ export function Header({
           >
             <ZoomOut size={16} />
           </button>
-          <button 
+          <button
             onClick={onZoomIn}
             disabled={!canZoomIn}
             title="Acercar"
@@ -202,23 +224,23 @@ export function Header({
         </div>
 
         <div className="w-px h-6 bg-gray-200 mx-1" />        {/* Hidden inputs */}
-        <input 
-          type="file" 
-          ref={fileInputRef} 
-          onChange={handleXmlChange} 
-          accept=".xml" 
-          className="hidden" 
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleXmlChange}
+          accept=".xml"
+          className="hidden"
         />
-        <input 
-          type="file" 
+        <input
+          type="file"
           id="hidden-maxima-input"
-          onChange={handleMaximaChange} 
-          accept=".json,.maxima.json" 
-          className="hidden" 
+          onChange={handleMaximaChange}
+          accept=".json,.maxima.json"
+          className="hidden"
         />
 
         <div className="flex items-stretch bg-gray-100 rounded-md shadow-sm border border-gray-200 relative z-40">
-          <button 
+          <button
             disabled={!isDirty}
             onClick={async () => {
               if (currentFile?.type === 'maxima' && currentFile.handle) {
@@ -230,19 +252,18 @@ export function Header({
                 setShowSaveModal(true);
               }
             }}
-            className={`flex items-center space-x-2 px-3 py-1.5 font-medium text-sm transition-colors rounded-l-md border-r border-gray-200 ${
-              !isDirty
+            className={`flex items-center space-x-2 px-3 py-1.5 font-medium text-sm transition-colors rounded-l-md border-r border-gray-200 ${!isDirty
                 ? 'text-gray-400 cursor-not-allowed opacity-70'
                 : 'text-gray-700 hover:bg-gray-200'
-            }`}
+              }`}
             title={!isDirty ? 'No hay cambios para guardar' : 'Guardar cambios'}
           >
             <Save size={16} />
             <span>Guardar</span>
           </button>
-          
+
           <div className="relative group flex">
-            <button 
+            <button
               className="px-1.5 py-1.5 text-gray-700 hover:bg-gray-200 transition-colors rounded-r-md flex items-center h-full"
               title="Más opciones"
             >
@@ -250,25 +271,35 @@ export function Header({
             </button>
             {/* Dropdown Menu */}
             <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-              <button 
+              <button
                 onClick={onSaveCopy}
                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 rounded-t-md"
               >
-                <FileJson size={14} className="text-blue-600" /> 
+                <FileJson size={14} className="text-blue-600" />
                 JSON (compatible)
               </button>
-              <button 
+              <button
                 onClick={onExportHtml}
                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 border-t border-gray-100 rounded-b-md"
               >
-                <FileCode2 size={14} className="text-orange-500" /> 
+                <FileCode2 size={14} className="text-orange-500" />
                 Exportar HTML
               </button>
             </div>
           </div>
         </div>
-        
-        <button 
+
+        <button
+          onClick={handleNewProjectClick}
+          disabled={importState === 'importing'}
+          className="flex items-center space-x-1.5 px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-md font-medium text-sm hover:bg-gray-50 transition-colors disabled:opacity-50 shadow-sm"
+          title="Nuevo proyecto en blanco"
+        >
+          <FilePlus2 size={16} />
+          <span>Nuevo</span>
+        </button>
+
+        <button
           onClick={onOpenMaximaClick}
           disabled={importState === 'importing'}
           className="flex items-center space-x-2 px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-md font-medium text-sm hover:bg-gray-50 transition-colors disabled:opacity-50 shadow-sm"
@@ -277,7 +308,7 @@ export function Header({
           <FolderOpen size={16} />
         </button>
 
-        <button 
+        <button
           onClick={() => fileInputRef.current?.click()}
           disabled={importState === 'importing'}
           className="flex items-center space-x-2 px-4 py-1.5 bg-blue-600 text-white rounded-md font-medium text-sm hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm"
@@ -287,45 +318,81 @@ export function Header({
         </button>
       </div>
 
+      {/* Modal Nuevo Proyecto */}
+      {showNewProjectModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/20" onClick={() => setShowNewProjectModal(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-96 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center">
+              <h3 className="font-semibold text-gray-800 text-sm">Crear proyecto en blanco</h3>
+              <button onClick={() => setShowNewProjectModal(false)} className="text-gray-400 hover:text-gray-600">×</button>
+            </div>
+            <div className="p-4 space-y-4">
+              <p className="text-sm text-gray-600">
+                {isDirty
+                  ? 'Tienes cambios sin guardar que se perderán si creas un proyecto en blanco.'
+                  : 'Se cerrará el proyecto actual y se iniciará un nuevo proyecto en blanco.'}
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setShowNewProjectModal(false)}
+                  className="px-3 py-1.5 border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-md font-medium text-sm transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    setShowNewProjectModal(false);
+                    onNewProject?.();
+                  }}
+                  className="px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-md font-medium text-sm transition-colors"
+                >
+                  Crear en blanco
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal Guardar */}
       {showSaveModal && currentFile && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/20" onClick={() => setShowSaveModal(false)}>
           <div className="bg-white rounded-lg shadow-xl w-80 overflow-visible" onClick={e => e.stopPropagation()}>
-             <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center">
-               <h3 className="font-semibold text-gray-800 text-sm">Guardar cambios</h3>
-               <button onClick={() => setShowSaveModal(false)} className="text-gray-400 hover:text-gray-600">×</button>
-             </div>
-             <div className="p-4 space-y-3">
-               
-               <div className="space-y-2 relative">
-                 <div className="group/btn relative">
-                   <button 
-                     onClick={() => { onSaveOverwrite?.(); setShowSaveModal(false); }} 
-                     disabled={currentFile.type !== 'maxima'}
-                     className="w-full text-left px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md disabled:opacity-50 disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed font-medium text-sm transition-colors"
-                   >
-                     Sobrescribir
-                   </button>
-                   {currentFile.type === 'xml-import' && (
-                     <div className="hidden group-hover/btn:block absolute left-full ml-2 top-0 w-48 p-2 bg-gray-800 text-white text-xs rounded shadow-lg z-10 pointer-events-none">
-                       Los proyectos XML importados deben guardarse primero como archivo Maxima.
-                     </div>
-                   )}
-                   {currentFile.type === 'new' && (
-                     <div className="hidden group-hover/btn:block absolute left-full ml-2 top-0 w-48 p-2 bg-gray-800 text-white text-xs rounded shadow-lg z-10 pointer-events-none">
-                       Aún no hay un archivo asociado. Utiliza 'Guardar copia'.
-                     </div>
-                   )}
-                 </div>
+            <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center">
+              <h3 className="font-semibold text-gray-800 text-sm">Guardar cambios</h3>
+              <button onClick={() => setShowSaveModal(false)} className="text-gray-400 hover:text-gray-600">×</button>
+            </div>
+            <div className="p-4 space-y-3">
 
-                 <button 
-                   onClick={() => { onSaveCopy?.(); setShowSaveModal(false); }} 
-                   className="w-full text-left px-3 py-2 border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-md font-medium text-sm transition-colors"
-                 >
-                   Guardar copia
-                 </button>
-               </div>
-             </div>
+              <div className="space-y-2 relative">
+                <div className="group/btn relative">
+                  <button
+                    onClick={() => { onSaveOverwrite?.(); setShowSaveModal(false); }}
+                    disabled={currentFile.type !== 'maxima'}
+                    className="w-full text-left px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md disabled:opacity-50 disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed font-medium text-sm transition-colors"
+                  >
+                    Sobrescribir
+                  </button>
+                  {currentFile.type === 'xml-import' && (
+                    <div className="hidden group-hover/btn:block absolute left-full ml-2 top-0 w-48 p-2 bg-gray-800 text-white text-xs rounded shadow-lg z-10 pointer-events-none">
+                      Los proyectos XML importados deben guardarse primero como archivo Maxima.
+                    </div>
+                  )}
+                  {currentFile.type === 'new' && (
+                    <div className="hidden group-hover/btn:block absolute left-full ml-2 top-0 w-48 p-2 bg-gray-800 text-white text-xs rounded shadow-lg z-10 pointer-events-none">
+                      Aún no hay un archivo asociado. Utiliza 'Guardar copia'.
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => { onSaveCopy?.(); setShowSaveModal(false); }}
+                  className="w-full text-left px-3 py-2 border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-md font-medium text-sm transition-colors"
+                >
+                  Guardar copia
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
