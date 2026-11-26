@@ -1,5 +1,5 @@
-import { RenderTask, getDaysBetween } from '../../utils/ganttUtils';
-import { differenceInDays, format, parseISO, startOfDay, isSameDay } from 'date-fns';
+import { RenderTask, getDaysBetween, parseCalendarDate } from '../../utils/ganttUtils';
+import { differenceInDays, format, startOfDay, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { GanttTask } from '../../domain/models';
 import { GanttBar } from './GanttBar';
@@ -121,13 +121,13 @@ export function GanttTimeline({
               
               const parent = visibleTasks[parentIndex];
               
-              const pStartOffset = differenceInDays(startOfDay(parseISO(parent.start)), startOfDay(startDate));
-              const pDuration = differenceInDays(startOfDay(parseISO(parent.end)), startOfDay(parseISO(parent.start))) + 1;
+              const pStartOffset = differenceInDays(parseCalendarDate(parent.start), startOfDay(startDate));
+              const pDuration = differenceInDays(parseCalendarDate(parent.end), parseCalendarDate(parent.start)) + 1;
               const pLeft = pStartOffset * cellWidth;
               const pWidth = pDuration * cellWidth;
               
-              const cStartOffset = differenceInDays(startOfDay(parseISO(task.start)), startOfDay(startDate));
-              const cDuration = differenceInDays(startOfDay(parseISO(task.end)), startOfDay(parseISO(task.start))) + 1;
+              const cStartOffset = differenceInDays(parseCalendarDate(task.start), startOfDay(startDate));
+              const cDuration = differenceInDays(parseCalendarDate(task.end), parseCalendarDate(task.start)) + 1;
               const cLeft = cStartOffset * cellWidth;
               const cWidth = cDuration * cellWidth;
               
@@ -209,8 +209,8 @@ export function GanttTimeline({
         {/* Task Bars */}
         <div className="relative z-20 flex flex-col">
           {visibleTasks.map(task => {
-            const taskStart = startOfDay(parseISO(task.start));
-            const taskEnd = startOfDay(parseISO(task.end));
+            const taskStart = parseCalendarDate(task.start);
+            const taskEnd = parseCalendarDate(task.end);
             
             // Calculate position
             const offsetDays = differenceInDays(taskStart, startOfDay(startDate));

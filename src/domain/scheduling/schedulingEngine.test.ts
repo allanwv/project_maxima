@@ -22,7 +22,7 @@ describe('Scheduling Engine', () => {
 
     const result = scheduleProjectAfterTaskChange(tasks, { changedTaskUid: 't1' });
     const t2 = result.find(t => t.id === 't2')!;
-    
+
     // T1 ends Mon 17th. T2 should start Tue 18th (1 working day after Mon 17th)
     expect(t2.start.substring(0, 10)).toBe('2026-08-18');
     // T2 duration is 5 days, so Tue, Wed, Thu, Fri, Mon -> ends Mon 24th
@@ -38,7 +38,7 @@ describe('Scheduling Engine', () => {
     // 0 lag = Tue 11th. 2 lag = Thu 13th.
     const result = scheduleProjectAfterTaskChange(tasks, { changedTaskUid: 't1' });
     const t2 = result.find(t => t.id === 't2')!;
-    
+
     expect(t2.start.substring(0, 10)).toBe('2026-08-13');
   });
 
@@ -52,7 +52,7 @@ describe('Scheduling Engine', () => {
 
     const result = scheduleProjectAfterTaskChange(tasks, { changedTaskUid: 't1' });
     const t2 = result.find(t => t.id === 't2')!;
-    
+
     expect(t2.start.substring(0, 10)).toBe('2026-08-12');
   });
 
@@ -101,11 +101,12 @@ describe('Scheduling Engine', () => {
     const tasks: GanttTask[] = [
       { id: 't1', name: 'A', start: '2026-08-10T00:00:00.000Z', end: '2026-08-10T00:00:00.000Z', duration: 1, progress: 0, milestone: false, resourceIds: [], dependencies: [] }, // Ends Mon 10th -> Next is Tue 11th
       { id: 't2', name: 'B', start: '2026-08-12T00:00:00.000Z', end: '2026-08-12T00:00:00.000Z', duration: 1, progress: 0, milestone: false, resourceIds: [], dependencies: [] }, // Ends Wed 12th -> Next is Thu 13th
-      { id: 't3', name: 'C', start: '2026-08-01T00:00:00.000Z', end: '2026-08-01T00:00:00.000Z', duration: 1, progress: 0, milestone: false, resourceIds: [], 
+      {
+        id: 't3', name: 'C', start: '2026-08-01T00:00:00.000Z', end: '2026-08-01T00:00:00.000Z', duration: 1, progress: 0, milestone: false, resourceIds: [],
         dependencies: [
           { taskId: 't1', type: 'FS', lag: 0 },
           { taskId: 't2', type: 'FS', lag: 0 }
-        ] 
+        ]
       }
     ];
 
@@ -123,7 +124,7 @@ describe('Scheduling Engine', () => {
 
     // Trigger update on T1, but T1 hasn't moved past T2's slack
     const result = scheduleProjectAfterTaskChange(tasks, { changedTaskUid: 't1' });
-    
+
     // T2 should stay at 13th
     expect(result[1].start.substring(0, 10)).toBe('2026-08-13');
   });
@@ -150,10 +151,11 @@ describe('Scheduling Engine', () => {
     // Trigger update on child 1
     const result = scheduleProjectAfterTaskChange(tasks, { changedTaskUid: 't1' });
     const s1 = result.find(t => t.id === 's1')!;
-    
-    // Summary should span from min child start to max child end
+
+    // Summary should span from min child start to max child end and update working duration
     expect(s1.start.substring(0, 10)).toBe('2026-08-10');
     expect(s1.end.substring(0, 10)).toBe('2026-08-14');
+    expect(s1.duration).toBe(5);
   });
 
   describe('evaluateTaskUids (Editing PREDEC)', () => {

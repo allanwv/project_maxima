@@ -1,4 +1,5 @@
 import { GanttProject, GanttTask } from './models';
+import { calculateEditedDuration, formatCalendarIso, parseCalendarDate } from '../utils/ganttUtils';
 
 /**
  * Generates a unique ID for a new project.
@@ -54,26 +55,22 @@ export function createNewTask(existingTasks: GanttTask[], parentId?: string): Ga
   if (parentId) {
     // For subtasks, use the parent's start date
     const parent = existingTasks.find(t => t.id === parentId);
-    startDate = parent?.start || new Date().toISOString().substring(0, 10) + 'T00:00:00.000Z';
+    startDate = parent?.start
+      ? formatCalendarIso(parseCalendarDate(parent.start))
+      : formatCalendarIso(new Date());
   } else if (existingTasks.length > 0) {
     // For root tasks, use the latest end date in the project as start
     const latestEnd = existingTasks.reduce((max, t) => {
-      return t.end > max ? t.end : max;
+      return parseCalendarDate(t.end) > parseCalendarDate(max) ? t.end : max;
     }, existingTasks[0].end);
-    // Parse date safely (avoid UTC→local timezone shift)
-    const ymd = latestEnd.substring(0, 10);
-    const [y, m, day] = ymd.split('-').map(Number);
-    const d = new Date(y, m - 1, day);
+    const d = parseCalendarDate(latestEnd);
     // Start the day after the latest end
     d.setDate(d.getDate() + 1);
     // Skip weekends
     while (d.getDay() === 0 || d.getDay() === 6) {
       d.setDate(d.getDate() + 1);
     }
-    const fy = d.getFullYear();
-    const fm = String(d.getMonth() + 1).padStart(2, '0');
-    const fd = String(d.getDate()).padStart(2, '0');
-    startDate = `${fy}-${fm}-${fd}T00:00:00.000Z`;
+    startDate = formatCalendarIso(d);
   } else {
     // Empty project: use today
     const now = new Date();
@@ -81,10 +78,7 @@ export function createNewTask(existingTasks: GanttTask[], parentId?: string): Ga
     while (now.getDay() === 0 || now.getDay() === 6) {
       now.setDate(now.getDate() + 1);
     }
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    startDate = `${y}-${m}-${day}T00:00:00.000Z`;
+    startDate = formatCalendarIso(now);
   }
 
   return {
@@ -228,14 +222,19 @@ export function recomputeSummaryRanges(tasks: GanttTask[]): GanttTask[] {
       const parent = newTasks[i];
       const children = newTasks.filter(t => t.parentId === parent.id);
       if (children.length > 0) {
-        let minStart = children[0].start;
-        let maxEnd = children[0].end;
+        let minStart = parseCalendarDate(children[0].start);
+        let maxEnd = parseCalendarDate(children[0].end);
         for (const child of children) {
-          if (new Date(child.start) < new Date(minStart)) minStart = child.start;
-          if (new Date(child.end) > new Date(maxEnd)) maxEnd = child.end;
+          const childStart = parseCalendarDate(child.start);
+          const childEnd = parseCalendarDate(child.end);
+          if (childStart < minStart) minStart = childStart;
+          if (childEnd > maxEnd) maxEnd = childEnd;
         }
-        if (parent.start !== minStart || parent.end !== maxEnd) {
-          newTasks[i] = { ...parent, start: minStart, end: maxEnd };
+        const minStartStr = formatCalendarIso(minStart);
+        const maxEndStr = formatCalendarIso(maxEnd);
+        const newDuration = calculateEditedDuration(minStartStr, maxEndStr);
+        if (parent.start !== minStartStr || parent.end !== maxEndStr || parent.duration !== newDuration) {
+          newTasks[i] = { ...parent, start: minStartStr, end: maxEndStr, duration: newDuration };
           iterationChanged = true;
           changed = true;
         }

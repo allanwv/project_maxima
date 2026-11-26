@@ -1,4 +1,4 @@
-import { addDays, parseISO, startOfDay, endOfDay, max, min, format, differenceInDays, isWeekend, addBusinessDays } from 'date-fns';
+import { addDays, parseISO, startOfDay, max, min, format, isWeekend, addBusinessDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { GanttTask } from '../domain/models';
 
@@ -10,13 +10,51 @@ export interface RenderTask extends GanttTask {
   ancestorsIsLast: boolean[];
 }
 
-export function formatDateCompact(isoStr: string | undefined): string {
-  if (!isoStr) return '';
-  try {
-    return format(parseISO(isoStr), 'dd-MM-yyyy');
-  } catch {
-    return '';
+/**
+ * Parses the calendar date (YYYY-MM-DD) from an ISO string into a local midnight Date
+ * without timezone shift (so "2026-11-26T00:00:00.000Z" stays Nov 26 in UTC-3).
+ */
+export function tryParseCalendarDate(isoStr: string | undefined): Date | null {
+  if (!isoStr || typeof isoStr !== 'string') return null;
+  const match = isoStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  if (
+    isNaN(date.getTime()) ||
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
   }
+  return date;
+}
+
+/**
+ * Parses an ISO date string into local midnight, falling back to today if invalid.
+ */
+export function parseCalendarDate(isoStr: string): Date {
+  return tryParseCalendarDate(isoStr) ?? startOfDay(new Date());
+}
+
+/**
+ * Formats a local Date into a naive calendar ISO timestamp ("yyyy-MM-ddT00:00:00.000Z").
+ */
+export function formatCalendarIso(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}T00:00:00.000Z`;
+}
+
+export function formatDateCompact(isoStr: string | undefined): string {
+  const parsed = tryParseCalendarDate(isoStr);
+  if (!parsed) return '';
+  return format(parsed, 'dd-MM-yyyy');
 }
 
 export function formatDateFull(isoStr: string | undefined): string {
@@ -35,11 +73,10 @@ export function formatDateFull(isoStr: string | undefined): string {
  * @returns number of working days
  */
 export function calculateEditedDuration(start: string, end: string): number {
-  if (!start || !end) return 0;
-  const s = startOfDay(parseISO(start));
-  const e = startOfDay(parseISO(end));
-  
-  if (isNaN(s.getTime()) || isNaN(e.getTime())) return 0;
+  const s = tryParseCalendarDate(start);
+  const e = tryParseCalendarDate(end);
+
+  if (!s || !e) return 0;
   if (s > e) return 0;
 
   let days = 0;
@@ -60,17 +97,16 @@ export function calculateEditedDuration(start: string, end: string): number {
  * @returns End date ISO string
  */
 export function calculateEditedEnd(start: string, durationDays: number): string {
-  if (!start) return '';
-  const s = startOfDay(parseISO(start));
-  if (isNaN(s.getTime())) return '';
-  
-  if (durationDays <= 1) return s.toISOString(); // 1 day duration means start == end
-  
+  const s = tryParseCalendarDate(start);
+  if (!s) return '';
+
+  if (durationDays <= 1) return formatCalendarIso(s); // 1 day duration means start == end
+
   // addBusinessDays doesn't count the current day if it's a workday towards the duration in the way we want.
-  // Our convention: 1 day duration = start and end are on the same day. 
+  // Our convention: 1 day duration = start and end are on the same day.
   // So durationDays = 2 means add 1 business day.
   const result = addBusinessDays(s, Math.ceil(durationDays) - 1);
-  return result.toISOString();
+  return formatCalendarIso(result);
 }
 
 export function getProjectDateRange(tasks: GanttTask[]) {
@@ -82,8 +118,8 @@ export function getProjectDateRange(tasks: GanttTask[]) {
     };
   }
 
-  const startDates = tasks.map(t => startOfDay(parseISO(t.start)));
-  const endDates = tasks.map(t => endOfDay(parseISO(t.end)));
+  const startDates = tasks.map(t => parseCalendarDate(t.start));
+  const endDates = tasks.map(t => parseCalendarDate(t.end));
 
   const projectStart = min(startDates);
   const projectEnd = max(endDates);

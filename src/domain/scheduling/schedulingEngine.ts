@@ -1,5 +1,6 @@
 import { addBusinessDays, isWeekend, isBefore, isAfter, subBusinessDays } from 'date-fns';
-import { GanttTask, GanttDependency } from '../models';
+import { GanttTask } from '../models';
+import { calculateEditedDuration, formatCalendarIso, parseCalendarDate } from '../../utils/ganttUtils';
 
 export interface ScheduleOptions {
   /**
@@ -12,26 +13,8 @@ export interface ScheduleOptions {
   evaluateTaskUids?: string[];
 }
 
-/**
- * Parses an ISO string (e.g. "2026-08-10T...") into a local midnight Date object
- * to avoid timezone shift bugs where UTC midnight becomes previous day 20:00 local.
- */
-function parseLocalDate(isoStr: string): Date {
-  if (!isoStr) return new Date();
-  const ymd = isoStr.substring(0, 10);
-  const [y, m, d] = ymd.split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
-
-/**
- * Formats a local Date object into a naive UTC midnight string "yyyy-MM-ddT00:00:00.000Z".
- */
-function formatLocalDate(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}T00:00:00.000Z`;
-}
+const parseLocalDate = parseCalendarDate;
+const formatLocalDate = formatCalendarIso;
 
 /**
  * Snaps a date forward to the next Monday if it falls on a weekend.
@@ -116,10 +99,12 @@ function recalculateSummaryTasks(tasks: Map<string, GanttTask>) {
       if (minStart && maxEnd) {
         const newStartStr = formatLocalDate(minStart);
         const newEndStr = formatLocalDate(maxEnd);
-        
-        if (summary.start !== newStartStr || summary.end !== newEndStr) {
+        const newDuration = calculateEditedDuration(newStartStr, newEndStr);
+
+        if (summary.start !== newStartStr || summary.end !== newEndStr || summary.duration !== newDuration) {
           summary.start = newStartStr;
           summary.end = newEndStr;
+          summary.duration = newDuration;
           changed = true;
         }
       }

@@ -13,7 +13,8 @@ import {
   moveTaskBranch,
   indentTask,
   outdentTask,
-  canIndentTask
+  canIndentTask,
+  recomputeSummaryRanges
 } from './taskUtils';
 
 describe('taskUtils', () => {
@@ -301,6 +302,35 @@ describe('taskUtils', () => {
     it('generateProjectId generates unique project_ IDs', () => {
       const id = generateProjectId();
       expect(id.startsWith('project_')).toBe(true);
+    });
+  });
+
+  describe('recomputeSummaryRanges', () => {
+    it('syncs summary start, end, and working duration from children even with mixed UTC offsets', () => {
+      const tasks = [
+        makeTask('parent', 'Embajador', {
+          start: '2026-11-25T00:00:00.000Z',
+          end: '2026-12-29T00:00:00.000Z',
+          duration: 23,
+        }),
+        makeTask('c1', 'Postulaciones', {
+          parentId: 'parent',
+          start: '2026-11-26T03:00:00.000Z',
+          end: '2026-12-07T03:00:00.000Z',
+          duration: 8,
+        }),
+        makeTask('c2', 'Capacitacion II', {
+          parentId: 'parent',
+          start: '2026-12-29T03:00:00.000Z',
+          end: '2026-12-30T03:00:00.000Z',
+          duration: 2,
+        }),
+      ];
+
+      const updated = recomputeSummaryRanges(tasks);
+      expect(updated[0].start).toBe('2026-11-26T00:00:00.000Z');
+      expect(updated[0].end).toBe('2026-12-30T00:00:00.000Z');
+      expect(updated[0].duration).toBe(25);
     });
   });
 });

@@ -1,8 +1,7 @@
 import { ChevronDown, ChevronRight, Plus, Trash2, MoreHorizontal, GripVertical, Indent as IndentIcon, Outdent as OutdentIcon } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { format, parseISO } from 'date-fns';
-import { RenderTask, calculateEditedEnd, calculateEditedDuration, getDisplayIdByTaskUid } from '../../utils/ganttUtils';
+import { RenderTask, calculateEditedEnd, calculateEditedDuration, formatDateCompact, getDisplayIdByTaskUid } from '../../utils/ganttUtils';
 import { parseDependencyExpression, formatDependencyTooltip } from '../../utils/dependencyUtils';
 import { GanttColumnId, GanttColumnDefinition } from '../../domain/columnDefinitions';
 import { EditableCell } from './EditableCell';
@@ -25,6 +24,7 @@ interface GanttTableProps {
   onDeleteTask?: (taskId: string) => void;
   editingTaskId?: string | null;
   onClearEditingTask?: () => void;
+  allTasks?: GanttTask[];
   onMoveTask?: (sourceId: string, targetId: string, position: 'before' | 'after') => void;
   onIndentTask?: (taskId: string) => void;
   onOutdentTask?: (taskId: string) => void;
@@ -49,19 +49,19 @@ const ResizeHandle = ({ col, onPointerDown }: ResizeHandleProps) => (
   </div>
 );
 
-function TaskActionMenu({ 
-  task, 
+function TaskActionMenu({
+  task,
   isSelected,
-  onAddSubtask, 
-  onDeleteTask, 
+  onAddSubtask,
+  onDeleteTask,
   onIndentTask,
   onOutdentTask,
   canIndentTask
-}: { 
-  task: RenderTask; 
+}: {
+  task: RenderTask;
   isSelected: boolean;
-  onAddSubtask?: (id: string) => void; 
-  onDeleteTask?: (id: string) => void; 
+  onAddSubtask?: (id: string) => void;
+  onDeleteTask?: (id: string) => void;
   onIndentTask?: (taskId: string) => void;
   onOutdentTask?: (taskId: string) => void;
   canIndentTask?: (taskId: string) => boolean;
@@ -176,22 +176,12 @@ function resolveResourceNames(resourceIds: string[], resources: GanttResource[])
   return names.join(', ');
 }
 
-// Helper to format an optional ISO date
-function formatOptionalDate(dateStr?: string): string {
-  if (!dateStr) return '';
-  try {
-    return format(parseISO(dateStr), 'dd-MM-yyyy');
-  } catch {
-    return '';
-  }
-}
-
-export function GanttTable({ 
+export function GanttTable({
   tasks, onToggleExpand, expandedIds,
-  visibleColumns, visibleColumnDefs, columnWidths, onResizeColumn, 
+  visibleColumns, visibleColumnDefs, columnWidths, onResizeColumn,
   updateTask, selectedTaskId, onSelectTask,
   onAddTask, onAddSubtask, onDeleteTask,
-  editingTaskId, onClearEditingTask,
+  editingTaskId, onClearEditingTask, allTasks,
   onMoveTask, onIndentTask, onOutdentTask, canIndentTask,
   resources = [],
   hoveredTaskId, onHoverTask
@@ -224,8 +214,8 @@ export function GanttTable({
   // Render a header cell for a given column definition
   const renderHeaderCell = (col: GanttColumnDefinition) => {
     return (
-      <div 
-        key={col.id} 
+      <div
+        key={col.id}
         className={`relative group/header flex items-center px-2 ${col.align === 'right' ? 'justify-end' : col.align === 'center' ? 'justify-center' : ''}`}
         style={{ width: columnWidths[col.id] }}
       >
@@ -243,7 +233,7 @@ export function GanttTable({
     switch (col.id) {
       case 'id':
         return (
-          <div 
+          <div
             key={col.id}
             className="px-2 text-center text-xs text-gray-400 font-medium truncate flex-shrink-0 flex items-center justify-between"
             style={{ width }}
@@ -258,7 +248,7 @@ export function GanttTable({
 
       case 'name':
         return (
-          <div 
+          <div
             key={col.id}
             className="flex items-center overflow-hidden pr-4 h-full"
             style={{ width }}
@@ -343,17 +333,17 @@ export function GanttTable({
       case 'progress':
         return (
           <div key={col.id} className="px-2 text-right text-xs text-gray-500 font-medium truncate" style={{ width }}>
-            <EditableCell 
-              value={task.progress.toString()} 
-              type="number" 
+            <EditableCell
+              value={task.progress.toString()}
+              type="number"
               className="justify-end"
               onSave={(val) => {
                 let p = parseInt(val, 10);
                 if (isNaN(p)) return;
                 p = Math.max(0, Math.min(100, p));
-                updateTask(task.id, { 
-                  progress: p, 
-                  importMetadata: { ...task.importMetadata, progressSource: 'maxima-user' } 
+                updateTask(task.id, {
+                  progress: p,
+                  importMetadata: { ...task.importMetadata, progressSource: 'maxima-user' }
                 });
               }}
             />
@@ -364,22 +354,28 @@ export function GanttTable({
       case 'duration':
         return (
           <div key={col.id} className="px-2 text-right text-xs text-gray-600 truncate" style={{ width }}>
-            <EditableCell 
-              value={(Math.round(task.duration * 1000)/1000).toString()} 
-              type="number"
-              className="justify-end"
-              title={task.importMetadata?.durationEstimated ? 'Duración estimada (Doble clic para editar)' : undefined}
-              onSave={(val) => {
-                const d = parseFloat(val.replace(',', '.'));
-                if (isNaN(d) || d < 0) return;
-                const newEnd = calculateEditedEnd(task.start, d);
-                updateTask(task.id, {
-                  duration: d,
-                  end: newEnd,
-                  importMetadata: { ...task.importMetadata, durationSource: 'maxima-calculated', durationEstimated: false }
-                });
-              }}
-            />
+            {task.hasChildren ? (
+              <span className="text-gray-500" title="Calculado automáticamente desde las subtareas">
+                {(Math.round(task.duration * 1000) / 1000).toString()}
+              </span>
+            ) : (
+              <EditableCell
+                value={(Math.round(task.duration * 1000) / 1000).toString()}
+                type="number"
+                className="justify-end"
+                title={task.importMetadata?.durationEstimated ? 'Duración estimada (Doble clic para editar)' : undefined}
+                onSave={(val) => {
+                  const d = parseFloat(val.replace(',', '.'));
+                  if (isNaN(d) || d < 0) return;
+                  const newEnd = calculateEditedEnd(task.start, d);
+                  updateTask(task.id, {
+                    duration: d,
+                    end: newEnd,
+                    importMetadata: { ...task.importMetadata, durationSource: 'maxima-calculated', durationEstimated: false }
+                  });
+                }}
+              />
+            )}
             <span className="ml-1 text-gray-400">días{task.importMetadata?.durationEstimated ? ' ?' : ''}</span>
           </div>
         );
@@ -387,52 +383,64 @@ export function GanttTable({
       case 'estimatedStart':
         return (
           <div key={col.id} className="px-2 text-xs text-gray-600 truncate" style={{ width }}>
-            <EditableCell 
-              value={task.start ? task.start.substring(0, 10) : ''}
-              displayValue={task.start ? format(parseISO(task.start), 'dd-MM-yyyy') : ''}
-              type="date"
-              onSave={(val) => {
-                if (!val) return;
-                let iso = val;
-                if (!iso.includes('T')) iso += 'T00:00:00.000Z';
-                const newEnd = calculateEditedEnd(iso, task.duration);
-                updateTask(task.id, { 
-                  start: iso,
-                  end: newEnd,
-                  importMetadata: { ...task.importMetadata, startSource: 'maxima-user', durationSource: 'maxima-calculated' } 
-                });
-              }}
-            />
+            {task.hasChildren ? (
+              <span className="text-gray-500" title="Calculado automáticamente desde las subtareas">
+                {formatDateCompact(task.start)}
+              </span>
+            ) : (
+              <EditableCell
+                value={task.start ? task.start.substring(0, 10) : ''}
+                displayValue={formatDateCompact(task.start)}
+                type="date"
+                onSave={(val) => {
+                  if (!val) return;
+                  let iso = val;
+                  if (!iso.includes('T')) iso += 'T00:00:00.000Z';
+                  const newEnd = calculateEditedEnd(iso, task.duration);
+                  updateTask(task.id, {
+                    start: iso,
+                    end: newEnd,
+                    importMetadata: { ...task.importMetadata, startSource: 'maxima-user', durationSource: 'maxima-calculated' }
+                  });
+                }}
+              />
+            )}
           </div>
         );
 
       case 'estimatedFinish':
         return (
           <div key={col.id} className="px-2 text-xs text-gray-600 truncate" style={{ width }}>
-            <EditableCell 
-              value={task.end ? task.end.substring(0, 10) : ''}
-              displayValue={task.end ? format(parseISO(task.end), 'dd-MM-yyyy') : ''}
-              type="date"
-              onSave={(val) => {
-                if (!val) return;
-                let iso = val;
-                if (!iso.includes('T')) iso += 'T00:00:00.000Z';
-                const newDuration = calculateEditedDuration(task.start, iso);
-                updateTask(task.id, { 
-                  end: iso,
-                  duration: newDuration,
-                  importMetadata: { ...task.importMetadata, finishSource: 'maxima-user', durationSource: 'maxima-calculated' } 
-                });
-              }}
-            />
+            {task.hasChildren ? (
+              <span className="text-gray-500" title="Calculado automáticamente desde las subtareas">
+                {formatDateCompact(task.end)}
+              </span>
+            ) : (
+              <EditableCell
+                value={task.end ? task.end.substring(0, 10) : ''}
+                displayValue={formatDateCompact(task.end)}
+                type="date"
+                onSave={(val) => {
+                  if (!val) return;
+                  let iso = val;
+                  if (!iso.includes('T')) iso += 'T00:00:00.000Z';
+                  const newDuration = calculateEditedDuration(task.start, iso);
+                  updateTask(task.id, {
+                    end: iso,
+                    duration: newDuration,
+                    importMetadata: { ...task.importMetadata, finishSource: 'maxima-user', durationSource: 'maxima-calculated' }
+                  });
+                }}
+              />
+            )}
           </div>
         );
 
       case 'predecessors':
         return (
-          <div 
+          <div
             key={col.id}
-            className="px-2 text-xs text-gray-500 truncate font-mono" 
+            className="px-2 text-xs text-gray-500 truncate font-mono"
             style={{ width }}
             title={task.dependencies?.map(d => formatDependencyTooltip(d, getDisplayIdByTaskUid(tasks, d.taskId) || '?')).join('\n')}
           >
@@ -461,7 +469,7 @@ export function GanttTable({
 
       case 'resources':
         return (
-          <div 
+          <div
             key={col.id}
             className="px-2 text-xs text-gray-600 truncate"
             style={{ width }}
@@ -474,28 +482,28 @@ export function GanttTable({
       case 'actualStart':
         return (
           <div key={col.id} className="px-2 text-xs text-gray-600 truncate" style={{ width }}>
-            <span>{formatOptionalDate(task.actualStart)}</span>
+            <span>{formatDateCompact(task.actualStart)}</span>
           </div>
         );
 
       case 'actualFinish':
         return (
           <div key={col.id} className="px-2 text-xs text-gray-600 truncate" style={{ width }}>
-            <span>{formatOptionalDate(task.actualFinish)}</span>
+            <span>{formatDateCompact(task.actualFinish)}</span>
           </div>
         );
 
       case 'baselineStart':
         return (
           <div key={col.id} className="px-2 text-xs text-gray-600 truncate" style={{ width }}>
-            <span>{formatOptionalDate(task.baselineStart)}</span>
+            <span>{formatDateCompact(task.baselineStart)}</span>
           </div>
         );
 
       case 'baselineFinish':
         return (
           <div key={col.id} className="px-2 text-xs text-gray-600 truncate" style={{ width }}>
-            <span>{formatOptionalDate(task.baselineFinish)}</span>
+            <span>{formatDateCompact(task.baselineFinish)}</span>
           </div>
         );
 
@@ -505,7 +513,7 @@ export function GanttTable({
   };
 
   return (
-    <div 
+    <div
       className="flex-shrink-0 border-r border-gray-200 bg-white flex flex-col z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] select-none"
       style={{ width: totalWidth }}
     >
@@ -525,52 +533,52 @@ export function GanttTable({
           const isDropTarget = dragTarget?.id === task.id;
 
           return (
-          <div
-            key={task.id}
-            draggable
-            onMouseEnter={() => onHoverTask?.(task.id)}
-            onMouseLeave={() => onHoverTask?.(null)}
-            onDragStart={(e) => {
-              setDraggedId(task.id);
-              e.dataTransfer.effectAllowed = 'move';
-            }}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = 'move';
-              if (!draggedId || draggedId === task.id) return;
-              
-              const rect = e.currentTarget.getBoundingClientRect();
-              const isTopHalf = e.clientY < rect.top + rect.height / 2;
-              setDragTarget({ id: task.id, position: isTopHalf ? 'before' : 'after' });
-            }}
-            onDragLeave={() => {}}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (draggedId && dragTarget && draggedId !== dragTarget.id) {
-                onMoveTask?.(draggedId, dragTarget.id, dragTarget.position);
-              }
-              setDraggedId(null);
-              setDragTarget(null);
-            }}
-            onDragEnd={() => {
-              setDraggedId(null);
-              setDragTarget(null);
-            }}
-            onClick={(e) => { e.stopPropagation(); onSelectTask(task.id); }}
-            className={`flex items-center relative h-[var(--row-height)] border-b border-gray-100 transition-colors group cursor-pointer
+            <div
+              key={task.id}
+              draggable
+              onMouseEnter={() => onHoverTask?.(task.id)}
+              onMouseLeave={() => onHoverTask?.(null)}
+              onDragStart={(e) => {
+                setDraggedId(task.id);
+                e.dataTransfer.effectAllowed = 'move';
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (!draggedId || draggedId === task.id) return;
+
+                const rect = e.currentTarget.getBoundingClientRect();
+                const isTopHalf = e.clientY < rect.top + rect.height / 2;
+                setDragTarget({ id: task.id, position: isTopHalf ? 'before' : 'after' });
+              }}
+              onDragLeave={() => { }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (draggedId && dragTarget && draggedId !== dragTarget.id) {
+                  onMoveTask?.(draggedId, dragTarget.id, dragTarget.position);
+                }
+                setDraggedId(null);
+                setDragTarget(null);
+              }}
+              onDragEnd={() => {
+                setDraggedId(null);
+                setDragTarget(null);
+              }}
+              onClick={(e) => { e.stopPropagation(); onSelectTask(task.id); }}
+              className={`flex items-center relative h-[var(--row-height)] border-b border-gray-100 transition-colors group cursor-pointer
               ${isSelected ? 'bg-blue-100 hover:bg-blue-100' : isHovered ? 'bg-gray-100/80' : 'hover:bg-slate-50'}
               ${isDraggingThis ? 'opacity-40' : ''}
             `}
-          >
-            {isDropTarget && dragTarget?.position === 'before' && (
-              <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 z-30 pointer-events-none" />
-            )}
-            {isDropTarget && dragTarget?.position === 'after' && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 z-30 pointer-events-none" />
-            )}
+            >
+              {isDropTarget && dragTarget?.position === 'before' && (
+                <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 z-30 pointer-events-none" />
+              )}
+              {isDropTarget && dragTarget?.position === 'after' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 z-30 pointer-events-none" />
+              )}
 
-            {visibleColumnDefs.map(col => renderBodyCell(col, task))}
-          </div>
+              {visibleColumnDefs.map(col => renderBodyCell(col, task))}
+            </div>
           );
         })}
 
@@ -582,11 +590,10 @@ export function GanttTable({
                 e.stopPropagation();
                 onAddTask();
               }}
-              className={`flex items-center gap-1.5 px-4 py-1 text-xs transition-colors ml-[55px] ${
-                visibleTasks.length === 0
-                  ? 'text-blue-600 font-medium hover:text-blue-700'
-                  : 'text-gray-400 hover:text-blue-600'
-              }`}
+              className={`flex items-center gap-1.5 px-4 py-1 text-xs transition-colors ml-[55px] ${visibleTasks.length === 0
+                ? 'text-blue-600 font-medium hover:text-blue-700'
+                : 'text-gray-400 hover:text-blue-600'
+                }`}
             >
               <Plus size={14} />
               <span>{visibleTasks.length === 0 ? 'Agregar primera tarea' : 'Tarea'}</span>

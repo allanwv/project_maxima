@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { GanttProject, GanttTask } from '../domain/models';
 import {
   createNewTask,
@@ -6,6 +6,7 @@ import {
   cleanOrphanedDependencies,
   insertTaskAtPosition,
   moveTaskBranch,
+  recomputeSummaryRanges,
   indentTask as utilsIndentTask,
   outdentTask as utilsOutdentTask,
   canIndentTask as utilsCanIndentTask
@@ -79,44 +80,16 @@ export function useProjectEditor(initialProject: GanttProject) {
   }, [undo, redo]);
 
   const updateTask = useCallback((taskId: string, updates: Partial<GanttTask>) => {
-    const newTasks = [...project.tasks];
+    let newTasks = [...project.tasks];
     const taskIndex = newTasks.findIndex(t => t.id === taskId);
     if (taskIndex === -1) return;
 
     // Mutate the specific task
     newTasks[taskIndex] = { ...newTasks[taskIndex], ...updates };
 
-    // Function to recalculate a summary task based on its children
-    const recalculateSummary = (parentId: string) => {
-      const children = newTasks.filter(t => t.parentId === parentId);
-      if (children.length === 0) return;
-
-      const parentIndex = newTasks.findIndex(t => t.id === parentId);
-      if (parentIndex === -1) return;
-
-      let minStart = children[0].start;
-      let maxEnd = children[0].end;
-
-      for (const child of children) {
-        if (new Date(child.start) < new Date(minStart)) minStart = child.start;
-        if (new Date(child.end) > new Date(maxEnd)) maxEnd = child.end;
-      }
-
-      const parent = newTasks[parentIndex];
-      // Only update if changed to prevent infinite loops / unnecessary renders
-      if (parent.start !== minStart || parent.end !== maxEnd) {
-        newTasks[parentIndex] = { ...parent, start: minStart, end: maxEnd };
-        // bubble up if this parent has a parent
-        if (parent.parentId) {
-          recalculateSummary(parent.parentId);
-        }
-      }
-    };
-
-    // If we updated a child, trigger bubble up
-    const updatedTask = newTasks[taskIndex];
-    if (updatedTask.parentId && (updates.start !== undefined || updates.end !== undefined)) {
-      recalculateSummary(updatedTask.parentId);
+    // If we updated a child's dates, recalculate summary ancestors
+    if (newTasks[taskIndex].parentId && (updates.start !== undefined || updates.end !== undefined)) {
+      newTasks = recomputeSummaryRanges(newTasks);
     }
 
     pushState({ ...project, tasks: newTasks });
@@ -151,7 +124,7 @@ export function useProjectEditor(initialProject: GanttProject) {
    */
   const addSubtask = useCallback((parentId: string): string => {
     const newTask = createNewTask(project.tasks, parentId);
-    const newTasks = insertTaskAtPosition(project.tasks, newTask);
+    const newTasks = recomputeSummaryRanges(insertTaskAtPosition(project.tasks, newTask));
     pushState({ ...project, tasks: newTasks });
     return newTask.id;
   }, [project, pushState]);
@@ -171,8 +144,8 @@ export function useProjectEditor(initialProject: GanttProject) {
     // Remove the tasks
     let newTasks = project.tasks.filter(t => !deletedIds.has(t.id));
 
-    // Clean orphaned dependency references
-    newTasks = cleanOrphanedDependencies(newTasks, deletedIds);
+    // Clean orphaned dependency references and recalculate surviving summaries
+    newTasks = recomputeSummaryRanges(cleanOrphanedDependencies(newTasks, deletedIds));
 
     pushState({ ...project, tasks: newTasks });
     return true;

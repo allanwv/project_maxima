@@ -1,8 +1,13 @@
 import { useState } from 'react';
-import { RenderTask } from '../../utils/ganttUtils';
+import {
+  RenderTask,
+  calculateEditedDuration,
+  formatCalendarIso,
+  formatDateCompact,
+  parseCalendarDate,
+} from '../../utils/ganttUtils';
 import { GanttTask } from '../../domain/models';
-import { format, parseISO, startOfDay, addDays } from 'date-fns';
-import { calculateEditedEnd, calculateEditedDuration } from '../../utils/ganttUtils';
+import { format, addDays } from 'date-fns';
 
 interface GanttBarProps {
   task: RenderTask;
@@ -56,12 +61,12 @@ export function GanttBar({ task, left, width, cellWidth, startDate, onUpdate, is
   };
 
   const commitChange = (type: 'move' | 'resizeLeft' | 'resizeRight', deltaDays: number) => {
-    const sDate = startOfDay(parseISO(task.start));
-    const eDate = startOfDay(parseISO(task.end));
+    const sDate = parseCalendarDate(task.start);
+    const eDate = parseCalendarDate(task.end);
 
     if (type === 'move') {
-      const newStart = addDays(sDate, deltaDays).toISOString();
-      const newEnd = addDays(eDate, deltaDays).toISOString();
+      const newStart = formatCalendarIso(addDays(sDate, deltaDays));
+      const newEnd = formatCalendarIso(addDays(eDate, deltaDays));
       onUpdate(task.id, {
         start: newStart,
         end: newEnd,
@@ -70,7 +75,7 @@ export function GanttBar({ task, left, width, cellWidth, startDate, onUpdate, is
     } else if (type === 'resizeRight') {
       const newEnd = addDays(eDate, deltaDays);
       if (newEnd >= sDate) {
-        const endIso = newEnd.toISOString();
+        const endIso = formatCalendarIso(newEnd);
         const newDuration = calculateEditedDuration(task.start, endIso);
         onUpdate(task.id, {
           end: endIso,
@@ -81,7 +86,7 @@ export function GanttBar({ task, left, width, cellWidth, startDate, onUpdate, is
     } else if (type === 'resizeLeft') {
       const newStart = addDays(sDate, deltaDays);
       if (newStart <= eDate) {
-        const startIso = newStart.toISOString();
+        const startIso = formatCalendarIso(newStart);
         const newDuration = calculateEditedDuration(startIso, task.end);
         onUpdate(task.id, {
           start: startIso,
@@ -112,8 +117,8 @@ export function GanttBar({ task, left, width, cellWidth, startDate, onUpdate, is
   }
 
   // Formatting for preview tooltip
-  const previewStart = addDays(startOfDay(parseISO(task.start)), dragState.type === 'move' || dragState.type === 'resizeLeft' ? dragState.deltaDays : 0);
-  const previewEnd = addDays(startOfDay(parseISO(task.end)), dragState.type === 'move' || dragState.type === 'resizeRight' ? dragState.deltaDays : 0);
+  const previewStart = addDays(parseCalendarDate(task.start), dragState.type === 'move' || dragState.type === 'resizeLeft' ? dragState.deltaDays : 0);
+  const previewEnd = addDays(parseCalendarDate(task.end), dragState.type === 'move' || dragState.type === 'resizeRight' ? dragState.deltaDays : 0);
 
   const formatPreview = () => {
     return `${format(previewStart, 'dd MMM')} → ${format(previewEnd, 'dd MMM')}`;
@@ -193,11 +198,11 @@ export function GanttBar({ task, left, width, cellWidth, startDate, onUpdate, is
               <div className="font-bold text-gray-900 mb-1.5 break-words">{task.name}</div>
               <div className="flex justify-between mb-1">
                 <span className="text-gray-500">Inicio:</span>
-                <span>{format(parseISO(task.start), 'dd-MM-yyyy')}</span>
+                <span>{formatDateCompact(task.start)}</span>
               </div>
               <div className="flex justify-between mb-1">
                 <span className="text-gray-500">Fin:</span>
-                <span>{format(parseISO(task.end), 'dd-MM-yyyy')}</span>
+                <span>{formatDateCompact(task.end)}</span>
               </div>
               <div className="flex justify-between mb-1">
                 <span className="text-gray-500">Duración:</span>
