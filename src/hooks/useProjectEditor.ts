@@ -27,17 +27,6 @@ export function useProjectEditor(initialProject: GanttProject) {
     }
   }, [project]);
 
-  // Autosave to localStorage on project change
-  useEffect(() => {
-    if (isDirty) {
-      localStorage.setItem('maxima:autosave', JSON.stringify({
-        format: 'project-maxima',
-        version: 1,
-        project
-      }));
-    }
-  }, [project, isDirty]);
-
   // Expose a way to load manually or reset
   const loadProject = useCallback((newProject: GanttProject) => {
     setProjectState(newProject);

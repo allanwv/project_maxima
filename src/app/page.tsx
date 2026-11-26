@@ -1,10 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FilePlus2, FolderOpen } from 'lucide-react';
+import { FilePlus2, FolderOpen, Layers } from 'lucide-react';
 import { GanttChart } from '@/components/gantt/GanttChart';
 import { Header } from '@/components/layout/Header';
 import { GanttProject } from '@/domain/models';
+import {
+  SavedLocalProject,
+  hydrateLocalProjects,
+  removeSavedProject,
+  upsertSavedProject,
+} from '@/domain/localProjects';
 import { createBlankProject } from '@/domain/taskUtils';
 import { importProjectXml } from '@/importers/xml/projectXmlImporter';
 import { useProjectEditor } from '@/hooks/useProjectEditor';
@@ -52,6 +58,8 @@ export default function Home() {
   const [importState, setImportState] = useState<'idle' | 'importing' | 'error' | 'success'>('idle');
   const [errorDetails, setErrorDetails] = useState<string>('');
   const [hasActiveWorkspace, setHasActiveWorkspace] = useState(false);
+  const [hasHydrated, setHasHydrated] = useState(false);
+  const [savedProjects, setSavedProjects] = useState<SavedLocalProject[]>([]);
 
   const {
     currentFile,
@@ -64,20 +72,42 @@ export default function Home() {
     handleOpenMaximaClick
   } = useSaveFile({ project, setIsDirty, loadProject });
 
-  // Attempt to load autosave on mount
+  // Hydrate multi-project library and migrate any legacy maxima:autosave on mount
   useEffect(() => {
-    const saved = localStorage.getItem('maxima:autosave');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.format === 'project-maxima' && parsed.project) {
-          loadProject(parsed.project);
-        }
-      } catch (e) {
-        // ignore invalid
+    const { projects, activeProject } = hydrateLocalProjects();
+    queueMicrotask(() => {
+      setSavedProjects(projects);
+      if (activeProject) {
+        loadProject(activeProject);
+        setCurrentFile({
+          name: activeProject.name,
+          type: 'new'
+        });
       }
-    }
-  }, [loadProject]);
+      setHasHydrated(true);
+    });
+  }, [loadProject, setCurrentFile]);
+
+  // Persist active project changes to local browser library + legacy autosave mirror
+  useEffect(() => {
+    if (!hasHydrated) return;
+    if (project.id === emptyProject.id && project.tasks.length === 0) return;
+    const updated = upsertSavedProject(project);
+    queueMicrotask(() => {
+      setSavedProjects(updated);
+    });
+  }, [project, hasHydrated]);
+
+  // Warn before closing tab or reloading when there are unexported changes
+  useEffect(() => {
+    if (!isDirty) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
 
   const handleCreateBlankProject = () => {
     const blank = createBlankProject();
@@ -86,10 +116,39 @@ export default function Home() {
       name: blank.name,
       type: 'new'
     });
-    localStorage.removeItem('maxima:autosave');
+    const updated = upsertSavedProject(blank);
+    setSavedProjects(updated);
     setHasActiveWorkspace(true);
     setImportState('idle');
     setErrorDetails('');
+  };
+
+  const handleSelectLocalProject = (projectId: string) => {
+    const target = savedProjects.find((entry) => entry.id === projectId);
+    if (!target) return;
+    loadProject(target.project);
+    setCurrentFile({
+      name: target.name,
+      type: 'new'
+    });
+    const updated = upsertSavedProject(target.project);
+    setSavedProjects(updated);
+    setHasActiveWorkspace(true);
+    setImportState('idle');
+    setErrorDetails('');
+  };
+
+  const handleDeleteLocalProject = (projectId: string) => {
+    const remaining = removeSavedProject(projectId);
+    setSavedProjects(remaining);
+    if (projectId === project.id) {
+      loadProject(emptyProject);
+      setCurrentFile({
+        name: emptyProject.name,
+        type: 'new'
+      });
+      setHasActiveWorkspace(false);
+    }
   };
 
   const showGantt = project.tasks.length > 0 || hasActiveWorkspace || project.id !== emptyProject.id;
@@ -97,7 +156,7 @@ export default function Home() {
   const handleImportXml = (xmlString: string) => {
     setImportState('importing');
     setErrorDetails('');
-    
+
     // Use a small timeout to allow UI to render "Importing..." state
     setTimeout(() => {
       try {
@@ -109,7 +168,7 @@ export default function Home() {
         });
         setHasActiveWorkspace(true);
         setImportState('success');
-        
+
         // Reset success state after a few seconds
         setTimeout(() => setImportState('idle'), 3000);
       } catch (err: unknown) {
@@ -122,9 +181,12 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50/50">
-      <Header 
+      <Header
         project={project}
         onNewProject={handleCreateBlankProject}
+        savedProjects={savedProjects}
+        onSelectLocalProject={handleSelectLocalProject}
+        onDeleteLocalProject={handleDeleteLocalProject}
         onImportXml={handleImportXml}
         onImportMaxima={handleImportMaxima}
         importState={importState}
@@ -148,7 +210,7 @@ export default function Home() {
         onOpenMaximaClick={handleOpenMaximaClick}
         saveStatus={saveStatus}
       />
-      
+
       {importState === 'error' && (
         <div className="bg-red-50 border-b border-red-200 px-6 py-3">
           <p className="text-sm text-red-800 font-medium">No pudimos importar este proyecto.</p>
@@ -160,7 +222,7 @@ export default function Home() {
         {/* We add a subtle overlay while importing to prevent interactions */}
         {importState === 'importing' && (
           <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-50 flex items-center justify-center">
-             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
           </div>
         )}
         {/* We key by project id to force remount and reset expand/collapse states on new project */}
@@ -189,11 +251,31 @@ export default function Home() {
                 <span>Abrir proyecto (.json)</span>
               </button>
             </div>
+            {savedProjects.length > 0 && (
+              <div className="mt-8 w-full max-w-md border-t border-gray-100 pt-5">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-gray-500 mb-2.5">
+                  <Layers size={14} />
+                  <span>Proyectos guardados en este navegador ({savedProjects.length})</span>
+                </div>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {savedProjects.map((entry) => (
+                    <button
+                      key={entry.id}
+                      onClick={() => handleSelectLocalProject(entry.id)}
+                      className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 rounded-md transition-colors"
+                    >
+                      <span className="text-sm font-medium text-gray-800 truncate pr-2">{entry.name}</span>
+                      <span className="text-xs text-gray-400 flex-shrink-0">{entry.taskCount} tareas</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
-          <GanttChart 
-            key={project.id} 
-            project={project} 
+          <GanttChart
+            key={project.id}
+            project={project}
             updateTask={updateTask}
             updateTasks={updateTasks}
             zoomLevel={zoomLevel}

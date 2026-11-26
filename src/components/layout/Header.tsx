@@ -1,10 +1,14 @@
-import { Upload, FileJson, Undo, Redo, Save, Calendar, ZoomIn, ZoomOut, ChevronDown, FileCode2, Pencil, FolderOpen, FilePlus2 } from 'lucide-react';
+import { Upload, FileJson, Undo, Redo, Save, Calendar, ZoomIn, ZoomOut, ChevronDown, FileCode2, Pencil, FolderOpen, FilePlus2, Layers, Trash2, Check } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { GanttProject } from '../../domain/models';
+import { SavedLocalProject } from '../../domain/localProjects';
 
 interface HeaderProps {
   project: GanttProject;
   onNewProject?: () => void;
+  savedProjects?: SavedLocalProject[];
+  onSelectLocalProject?: (projectId: string) => void;
+  onDeleteLocalProject?: (projectId: string) => void;
   onImportXml: (xml: string) => void;
   onImportMaxima: (json: string) => void;
   importState: 'idle' | 'importing' | 'error' | 'success';
@@ -30,7 +34,8 @@ interface HeaderProps {
 }
 
 export function Header({
-  project, onNewProject, onImportXml, onImportMaxima, importState,
+  project, onNewProject, savedProjects = [], onSelectLocalProject, onDeleteLocalProject,
+  onImportXml, onImportMaxima, importState,
   canUndo, canRedo, onUndo, onRedo, isDirty, setIsDirty,
   zoomLevel = 32, onZoomIn, onZoomOut, onSetZoomPreset, canZoomIn, canZoomOut,
   onRenameProject, currentFile, onSaveOverwrite, onSaveCopy, onExportHtml, onOpenMaximaClick, saveStatus
@@ -41,18 +46,35 @@ export function Header({
   const [editName, setEditName] = useState(project.name);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
+  const [showProjectsModal, setShowProjectsModal] = useState(false);
+  const [confirmDeleteProjectId, setConfirmDeleteProjectId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!showSaveModal && !showNewProjectModal) return;
+    if (!showSaveModal && !showNewProjectModal && !showProjectsModal) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setShowSaveModal(false);
         setShowNewProjectModal(false);
+        setShowProjectsModal(false);
+        setConfirmDeleteProjectId(null);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [showSaveModal, showNewProjectModal]);
+  }, [showSaveModal, showNewProjectModal, showProjectsModal]);
+
+  const formatSavedDate = (iso: string) => {
+    try {
+      return new Intl.DateTimeFormat('es-CL', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(new Date(iso));
+    } catch {
+      return '';
+    }
+  };
 
   const handleNewProjectClick = () => {
     if (isDirty || project.tasks.length > 0) {
@@ -290,6 +312,24 @@ export function Header({
         </div>
 
         <button
+          onClick={() => {
+            setConfirmDeleteProjectId(null);
+            setShowProjectsModal(true);
+          }}
+          disabled={importState === 'importing'}
+          className="flex items-center space-x-1.5 px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-md font-medium text-sm hover:bg-gray-50 transition-colors disabled:opacity-50 shadow-sm"
+          title="Proyectos guardados en este navegador"
+        >
+          <Layers size={16} />
+          <span>Proyectos</span>
+          {savedProjects.length > 0 && (
+            <span className="ml-0.5 px-1.5 py-0.5 text-[11px] leading-none rounded-full bg-gray-100 text-gray-600 font-semibold">
+              {savedProjects.length}
+            </span>
+          )}
+        </button>
+
+        <button
           onClick={handleNewProjectClick}
           disabled={importState === 'importing'}
           className="flex items-center space-x-1.5 px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-md font-medium text-sm hover:bg-gray-50 transition-colors disabled:opacity-50 shadow-sm"
@@ -318,6 +358,144 @@ export function Header({
         </button>
       </div>
 
+      {/* Modal Proyectos Guardados */}
+      {showProjectsModal && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/20"
+          onClick={() => {
+            setShowProjectsModal(false);
+            setConfirmDeleteProjectId(null);
+          }}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center">
+              <div>
+                <h3 className="font-semibold text-gray-800 text-sm">Proyectos en este navegador</h3>
+                <p className="text-xs text-gray-400">
+                  Se guardan automáticamente aquí. Exporta a `.maxima.json` para respaldar en disco.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowProjectsModal(false);
+                  setConfirmDeleteProjectId(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 space-y-3 max-h-[60vh] overflow-y-auto">
+              {isDirty && (
+                <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                  El proyecto actual tiene cambios sin exportar a `.maxima.json`, pero seguirá guardado aquí en el navegador si cambias a otro.
+                </div>
+              )}
+              {savedProjects.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-6">
+                  Aún no hay proyectos guardados en este navegador.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {savedProjects.map((entry) => {
+                    const isActive = entry.id === project.id;
+                    const isConfirming = confirmDeleteProjectId === entry.id;
+                    return (
+                      <div
+                        key={entry.id}
+                        className={`flex items-center justify-between gap-3 p-3 rounded-lg border transition-colors ${
+                          isActive
+                            ? 'bg-blue-50/60 border-blue-200'
+                            : 'bg-white border-gray-200 hover:bg-gray-50'
+                        }`}
+                      >
+                        <button
+                          onClick={() => {
+                            if (!isActive) {
+                              onSelectLocalProject?.(entry.id);
+                            }
+                            setShowProjectsModal(false);
+                            setConfirmDeleteProjectId(null);
+                          }}
+                          className="flex-1 min-w-0 text-left"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-900 truncate">{entry.name}</span>
+                            {isActive && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium bg-blue-100 text-blue-700 rounded">
+                                <Check size={11} />
+                                Activo
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-400 mt-0.5">
+                            {entry.taskCount} {entry.taskCount === 1 ? 'tarea' : 'tareas'} · {formatSavedDate(entry.updatedAt)}
+                          </div>
+                        </button>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          {isConfirming ? (
+                            <>
+                              <button
+                                onClick={() => {
+                                  onDeleteLocalProject?.(entry.id);
+                                  setConfirmDeleteProjectId(null);
+                                }}
+                                className="px-2 py-1 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                              >
+                                Eliminar
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteProjectId(null)}
+                                className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+                              >
+                                Cancelar
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmDeleteProjectId(entry.id)}
+                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                              title="Eliminar de este navegador"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
+              <button
+                onClick={() => {
+                  setShowProjectsModal(false);
+                  setConfirmDeleteProjectId(null);
+                  onNewProject?.();
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+              >
+                <FilePlus2 size={15} />
+                <span>Nuevo proyecto en blanco</span>
+              </button>
+              <button
+                onClick={() => {
+                  setShowProjectsModal(false);
+                  setConfirmDeleteProjectId(null);
+                }}
+                className="px-3 py-1.5 border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 rounded-md font-medium text-sm transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal Nuevo Proyecto */}
       {showNewProjectModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/20" onClick={() => setShowNewProjectModal(false)}>
@@ -329,8 +507,8 @@ export function Header({
             <div className="p-4 space-y-4">
               <p className="text-sm text-gray-600">
                 {isDirty
-                  ? 'Tienes cambios sin guardar que se perderán si creas un proyecto en blanco.'
-                  : 'Se cerrará el proyecto actual y se iniciará un nuevo proyecto en blanco.'}
+                  ? 'Tienes cambios sin exportar a archivo `.maxima.json`, aunque el proyecto actual seguirá guardado en este navegador dentro de «Proyectos».'
+                  : 'El proyecto actual seguirá disponible en «Proyectos» dentro de este navegador.'}
               </p>
               <div className="flex justify-end gap-2">
                 <button
